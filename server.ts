@@ -91,32 +91,36 @@ app.use((req: Request, res: Response) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-const PORT = config.port;
+// Only start the server if not running on Vercel
+// Vercel will handle the serverless function invocation
+if (process.env.VERCEL !== '1') {
+  const PORT = config.port;
 
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT} in ${config.nodeEnv} mode`);
-});
-
-// Handle port already in use error gracefully
-server.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    logger.warn(`Port ${PORT} is already in use. Server may already be running.`);
-    logger.info(`If you need to restart, stop the existing server first.`);
-    // Don't exit - let the existing server continue running
-    return;
-  } else {
-    logger.error('Server error:', err);
-    process.exit(1);
-  }
-});
-
-// Graceful shutdown for nodemon
-process.once('SIGUSR2', () => {
-  server.close(() => {
-    logger.info('Server closed for restart');
-    process.kill(process.pid, 'SIGUSR2');
+  const server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT} in ${config.nodeEnv} mode`);
   });
-});
+
+  // Handle port already in use error gracefully
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.warn(`Port ${PORT} is already in use. Server may already be running.`);
+      logger.info(`If you need to restart, stop the existing server first.`);
+      // Don't exit - let the existing server continue running
+      return;
+    } else {
+      logger.error('Server error:', err);
+      process.exit(1);
+    }
+  });
+
+  // Graceful shutdown for nodemon
+  process.once('SIGUSR2', () => {
+    server.close(() => {
+      logger.info('Server closed for restart');
+      process.kill(process.pid, 'SIGUSR2');
+    });
+  });
+}
 
 export default app;
 
