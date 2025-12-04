@@ -3,15 +3,42 @@ import mongoose from 'mongoose';
 
 dotenv.config();
 
-// MongoDB Connection
+// MongoDB Connection - optimized for serverless (Vercel)
+let cachedConnection: typeof mongoose | null = null;
+
 export const connectDB = async (): Promise<void> => {
   try {
+    // Reuse existing connection if available (important for serverless)
+    if (cachedConnection && mongoose.connection.readyState === 1) {
+      console.log('Using existing MongoDB connection');
+      return;
+    }
+
     const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/donation-platform';
-    const conn = await mongoose.connect(mongoUri);
+    
+    if (!mongoUri) {
+      throw new Error('MONGODB_URI is not defined');
+    }
+
+    // Close existing connection if it exists but is not ready
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.close();
+    }
+
+    const conn = await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+    });
+    
+    cachedConnection = conn;
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    process.exit(1);
+    // Don't exit in serverless environment - let Vercel handle it
+    if (process.env.VERCEL !== '1') {
+      process.exit(1);
+    }
+    throw error;
   }
 };
 

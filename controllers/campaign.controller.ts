@@ -26,13 +26,17 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
       ];
     }
 
+    // Validate and parse pagination parameters
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 10)); // Max 100, min 1
+
     const campaigns = await Campaign.find(query)
       .select('title description organizer goalAmount raisedAmount category coverImage status endDate donorCount createdAt')
       .populate('category', 'name slug')
       .populate('organizerId', 'name email avatar')
       .sort({ createdAt: -1 })
-      .limit(Number(limit))
-      .skip((Number(page) - 1) * Number(limit))
+      .limit(limitNum)
+      .skip((pageNum - 1) * limitNum)
       .lean();
 
     const total = await Campaign.countDocuments(query);
@@ -41,12 +45,16 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
       success: true,
       campaigns,
       total,
-      page: Number(page),
-      limit: Number(limit),
+      page: pageNum,
+      limit: limitNum,
     });
   } catch (error: any) {
     logger.error('Get campaigns error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch campaigns',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
 };
 
