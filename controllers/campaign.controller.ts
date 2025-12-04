@@ -164,7 +164,11 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
 
     // Check if user owns the campaign
     if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      res.status(403).json({ message: 'Not authorized' });
+      logger.warn(`Authorization failed: User ${req.user._id} attempted to update campaign ${req.params.id} owned by ${campaign.organizerId}`);
+      res.status(403).json({ 
+        message: 'You are not authorized to update this campaign. Only the campaign organizer or an admin can update it.',
+        code: 'NOT_CAMPAIGN_OWNER'
+      });
       return;
     }
 
@@ -219,7 +223,11 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
 
     // Check if user owns the campaign or is admin
     if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      res.status(403).json({ message: 'Not authorized' });
+      logger.warn(`Authorization failed: User ${req.user._id} attempted to delete campaign ${req.params.id} owned by ${campaign.organizerId}`);
+      res.status(403).json({ 
+        message: 'You are not authorized to delete this campaign. Only the campaign organizer or an admin can delete it.',
+        code: 'NOT_CAMPAIGN_OWNER'
+      });
       return;
     }
 

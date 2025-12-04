@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { User, IUser } from '../models/User.model.js';
+import { logger } from '../utils/logger.js';
 
 // Extend Express Request to include user
 declare global {
@@ -41,20 +42,34 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     req.user = user;
     next();
-  } catch (error) {
-    res.status(401).json({ message: 'Invalid or expired token' });
+  } catch (error: any) {
+    logger.warn(`Authentication failed: ${error.message || 'Invalid or expired token'} for route ${req.path}`);
+    res.status(401).json({ 
+      message: 'Invalid or expired token',
+      code: 'INVALID_TOKEN'
+    });
   }
 };
 
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      logger.warn(`Authorization failed: No user found for route ${req.path}`);
+      res.status(401).json({ 
+        message: 'Authentication required',
+        code: 'AUTH_REQUIRED'
+      });
       return;
     }
 
     if (!roles.includes(req.user.role)) {
-      res.status(403).json({ message: 'Access denied' });
+      logger.warn(`Authorization failed: User ${req.user._id} (role: ${req.user.role}) attempted to access ${req.path} requiring roles: ${roles.join(', ')}`);
+      res.status(403).json({ 
+        message: `Access denied. This endpoint requires one of the following roles: ${roles.join(', ')}. Your current role is: ${req.user.role}`,
+        code: 'INSUFFICIENT_PERMISSIONS',
+        requiredRoles: roles,
+        userRole: req.user.role
+      });
       return;
     }
 

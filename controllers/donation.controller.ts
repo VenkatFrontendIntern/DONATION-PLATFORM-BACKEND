@@ -160,7 +160,11 @@ export const getCertificate = async (req: Request, res: Response): Promise<void>
 
     // Check if user owns the donation
     if (donation.donorId && donation.donorId.toString() !== req.user._id.toString()) {
-      res.status(403).json({ message: 'Not authorized' });
+      logger.warn(`Authorization failed: User ${req.user._id} attempted to access donation ${req.params.id} owned by ${donation.donorId}`);
+      res.status(403).json({ 
+        message: 'You are not authorized to access this donation certificate. Only the donor can access their own certificate.',
+        code: 'NOT_DONATION_OWNER'
+      });
       return;
     }
 
