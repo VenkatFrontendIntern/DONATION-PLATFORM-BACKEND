@@ -43,7 +43,7 @@ const generateToken = (id: string): string => {
   }
   return jwt.sign({ id }, config.jwtSecret, {
     expiresIn: config.jwtExpire,
-  });
+  } as jwt.SignOptions);
 };
 
 // Generate Refresh Token
@@ -53,7 +53,7 @@ const generateRefreshToken = (id: string): string => {
   }
   return jwt.sign({ id }, config.jwtRefreshSecret, {
     expiresIn: config.jwtRefreshExpire,
-  });
+  } as jwt.SignOptions);
 };
 
 // @desc    Register user
