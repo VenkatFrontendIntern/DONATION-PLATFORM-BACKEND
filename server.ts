@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction, ErrorRequestHandler } from 'e
 import cors from 'cors';
 import { connectDB, config } from './config/index.js';
 import { apiLimiter } from './middlewares/rateLimiter.js';
+import { ensureDBConnection } from './middlewares/db.middleware.js';
 import { logger } from './utils/logger.js';
 import { initializeAdmin } from './utils/initAdmin.js';
 
@@ -12,11 +13,16 @@ import donationRoutes from './routes/donation.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import upiRoutes from './routes/upi.routes.js';
 
-// Connect to MongoDB
-connectDB().then(() => {
-  // Initialize admin user after DB connection
-  initializeAdmin();
-});
+// Connect to MongoDB (for non-serverless environments)
+// In Vercel serverless, connection will be established per request if needed
+if (process.env.VERCEL !== '1') {
+  connectDB().then(() => {
+    // Initialize admin user after DB connection
+    initializeAdmin();
+  }).catch((error) => {
+    logger.error('Failed to connect to database:', error);
+  });
+}
 
 const app = express();
 
@@ -27,6 +33,8 @@ const allowedOrigins = [
   'http://localhost:3000', // Vite dev server
   'http://localhost:4173', // Vite preview server
   'http://localhost:5173', // Alternative Vite port
+  'https://donation-platform-frontend.vercel.app', // Production frontend
+  'https://donation-platform-frontend-git-*.vercel.app', // Vercel preview deployments
 ];
 
 // In development, allow any localhost port
@@ -39,6 +47,11 @@ const corsOptions = {
     
     // In development, allow any localhost origin
     if (config.nodeEnv === 'development' && origin.includes('localhost')) {
+      return callback(null, true);
+    }
+    
+    // Allow Vercel preview deployments
+    if (origin && origin.includes('vercel.app')) {
       return callback(null, true);
     }
     
@@ -63,6 +76,9 @@ app.use('/uploads', express.static('uploads'));
 
 // Rate limiting
 app.use('/api/', apiLimiter);
+
+// Ensure database connection for all API routes (critical for Vercel serverless)
+app.use('/api/', ensureDBConnection);
 
 // Routes
 app.use('/api/auth', authRoutes);
