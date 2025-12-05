@@ -16,6 +16,10 @@ const router: Router = express.Router();
 
 // All admin routes require authentication and admin role
 router.use(authenticate);
+
+// Allow all authenticated users to view categories
+router.get('/categories', getAllCategories);
+
 router.use(authorize('admin'));
 
 router.get('/campaigns', getPendingCampaigns);
@@ -25,7 +29,6 @@ router.get('/stats', getStats);
 router.get('/users', getAllUsers);
 router.get('/donations', getAllDonations);
 router.post('/categories', createCategory);
-router.get('/categories', getAllCategories);
 router.delete('/categories/:id', deleteCategory);
 
 export default router;
