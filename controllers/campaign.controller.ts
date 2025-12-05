@@ -3,6 +3,7 @@ import { Campaign, ICampaign } from '../models/Campaign.model.js';
 import { Category } from '../models/Category.model.js';
 import { uploadToCloudinary } from '../services/cloudinary.service.js';
 import { logger } from '../utils/logger.js';
+import { sendSuccess, sendError, sendPaginated } from '../utils/apiResponse.js';
 
 export const getAllCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -42,21 +43,20 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
     const total = await Campaign.countDocuments(query);
     const pages = Math.ceil(total / limitNum);
 
-    res.json({
-      success: true,
+    sendPaginated(
+      res,
       campaigns,
-      total,
-      page: pageNum,
-      limit: limitNum,
-      pages,
-    });
+      {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages,
+      },
+      'Campaigns retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get campaigns error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch campaigns',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendError(res, 'Failed to fetch campaigns', 500, error);
   }
 };
 
@@ -67,7 +67,7 @@ export const getCampaignById = async (req: Request, res: Response): Promise<void
       .populate('organizerId', 'name email avatar');
 
     if (!campaign) {
-      res.status(404).json({ message: 'Campaign not found' });
+      sendError(res, 'Campaign not found', 404);
       return;
     }
 
@@ -75,20 +75,17 @@ export const getCampaignById = async (req: Request, res: Response): Promise<void
     campaign.views += 1;
     await campaign.save();
 
-    res.json({
-      success: true,
-      campaign,
-    });
+    sendSuccess(res, { campaign }, 'Campaign retrieved successfully');
   } catch (error: any) {
     logger.error('Get campaign error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const createCampaign = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
@@ -97,17 +94,17 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
     const galleryFiles = files?.images || [];
 
     if (!coverImageFile) {
-      res.status(400).json({ message: 'Cover image is required' });
+      sendError(res, 'Cover image is required', 400);
       return;
     }
 
-    // Upload cover image
-    const coverImageUrl = await uploadToCloudinary(coverImageFile.path);
+    // Upload cover image directly from buffer to Cloudinary
+    const coverImageUrl = await uploadToCloudinary(coverImageFile);
 
-    // Upload gallery images
+    // Upload gallery images directly from buffer to Cloudinary
     const galleryImageUrls: string[] = [];
     for (const file of galleryFiles) {
-      const url = await uploadToCloudinary(file.path);
+      const url = await uploadToCloudinary(file);
       galleryImageUrls.push(url);
     }
 
@@ -140,37 +137,31 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
 
     const campaign = await Campaign.create(campaignData);
 
-    res.status(201).json({
-      success: true,
-      campaign,
-    });
+    sendSuccess(res, { campaign }, 'Campaign created successfully', 201);
   } catch (error: any) {
     logger.error('Create campaign error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const updateCampaign = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
     const campaign = await Campaign.findById(req.params.id);
 
     if (!campaign) {
-      res.status(404).json({ message: 'Campaign not found' });
+      sendError(res, 'Campaign not found', 404);
       return;
     }
 
     // Check if user owns the campaign
     if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       logger.warn(`Authorization failed: User ${req.user._id} attempted to update campaign ${req.params.id} owned by ${campaign.organizerId}`);
-      res.status(403).json({ 
-        message: 'You are not authorized to update this campaign. Only the campaign organizer or an admin can update it.',
-        code: 'NOT_CAMPAIGN_OWNER'
-      });
+      sendError(res, 'You are not authorized to update this campaign. Only the campaign organizer or an admin can update it.', 403);
       return;
     }
 
@@ -178,13 +169,13 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
     const updateData: any = { ...req.body };
 
     if (files?.image?.[0]) {
-      updateData.coverImage = await uploadToCloudinary(files.image[0].path);
+      updateData.coverImage = await uploadToCloudinary(files.image[0]);
     }
 
     if (files?.images) {
       const galleryImageUrls: string[] = [];
       for (const file of files.images) {
-        const url = await uploadToCloudinary(file.path);
+        const url = await uploadToCloudinary(file);
         galleryImageUrls.push(url);
       }
       updateData.galleryImages = [...(campaign.galleryImages || []), ...galleryImageUrls];
@@ -199,56 +190,47 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
       runValidators: true,
     });
 
-    res.json({
-      success: true,
-      campaign: updatedCampaign,
-    });
+    sendSuccess(res, { campaign: updatedCampaign }, 'Campaign updated successfully');
   } catch (error: any) {
     logger.error('Update campaign error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const deleteCampaign = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
     const campaign = await Campaign.findById(req.params.id);
 
     if (!campaign) {
-      res.status(404).json({ message: 'Campaign not found' });
+      sendError(res, 'Campaign not found', 404);
       return;
     }
 
     // Check if user owns the campaign or is admin
     if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       logger.warn(`Authorization failed: User ${req.user._id} attempted to delete campaign ${req.params.id} owned by ${campaign.organizerId}`);
-      res.status(403).json({ 
-        message: 'You are not authorized to delete this campaign. Only the campaign organizer or an admin can delete it.',
-        code: 'NOT_CAMPAIGN_OWNER'
-      });
+      sendError(res, 'You are not authorized to delete this campaign. Only the campaign organizer or an admin can delete it.', 403);
       return;
     }
 
     await Campaign.findByIdAndDelete(req.params.id);
 
-    res.json({
-      success: true,
-      message: 'Campaign deleted',
-    });
+    sendSuccess(res, null, 'Campaign deleted successfully');
   } catch (error: any) {
     logger.error('Delete campaign error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const getMyCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
@@ -258,13 +240,10 @@ export const getMyCampaigns = async (req: Request, res: Response): Promise<void>
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json({
-      success: true,
-      campaigns,
-    });
+    sendSuccess(res, { campaigns }, 'Campaigns retrieved successfully');
   } catch (error: any) {
     logger.error('Get my campaigns error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -272,13 +251,10 @@ export const getCategories = async (req: Request, res: Response): Promise<void> 
   try {
     const categories = await Category.find({ isActive: true }).select('name slug').sort({ name: 1 }).lean();
 
-    res.json({
-      success: true,
-      categories,
-    });
+    sendSuccess(res, { categories }, 'Categories retrieved successfully');
   } catch (error: any) {
     logger.error('Get categories error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 

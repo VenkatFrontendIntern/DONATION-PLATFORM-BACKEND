@@ -1,7 +1,7 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-import fs from 'fs';
+import { Readable } from 'stream';
 
 // Configure Cloudinary
 if (config.cloudinary.cloudName && config.cloudinary.apiKey && config.cloudinary.apiSecret) {
@@ -12,31 +12,47 @@ if (config.cloudinary.cloudName && config.cloudinary.apiKey && config.cloudinary
   });
 }
 
-export const uploadToCloudinary = async (filePath: string): Promise<string> => {
+// Upload from buffer (memory storage) - no local file system needed
+export const uploadToCloudinary = async (file: Express.Multer.File): Promise<string> => {
   try {
-    if (!config.cloudinary.cloudName) {
-      // Fallback to local file path if Cloudinary not configured
-      logger.warn('Cloudinary not configured, using local file path');
-      return filePath;
+    if (!config.cloudinary.cloudName || !config.cloudinary.apiKey || !config.cloudinary.apiSecret) {
+      logger.error('Cloudinary not configured! Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET');
+      throw new Error('Cloudinary not configured');
     }
 
-    const result = await cloudinary.uploader.upload(filePath, {
-      folder: 'donation-platform',
-      resource_type: 'auto',
+    if (!file.buffer) {
+      throw new Error('File buffer is required. Make sure multer is using memory storage.');
+    }
+
+    // Upload buffer directly to Cloudinary using data URI format
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'donation-platform',
+          resource_type: 'auto',
+        },
+        (error, result) => {
+          if (error) {
+            logger.error('Cloudinary upload error:', error);
+            reject(error);
+          } else if (result) {
+            logger.info(`Successfully uploaded to Cloudinary: ${result.secure_url}`);
+            resolve(result.secure_url);
+          } else {
+            reject(new Error('Upload failed: No result from Cloudinary'));
+          }
+        }
+      );
+
+      // Convert buffer to stream and pipe to Cloudinary
+      const bufferStream = new Readable();
+      bufferStream.push(file.buffer);
+      bufferStream.push(null);
+      bufferStream.pipe(uploadStream);
     });
-
-    // Delete local file after upload
-    try {
-      fs.unlinkSync(filePath);
-    } catch (err) {
-      logger.warn('Failed to delete local file:', err);
-    }
-
-    return result.secure_url;
   } catch (error: any) {
     logger.error('Cloudinary upload error:', error);
-    // Fallback to local file path
-    return filePath;
+    throw error;
   }
 };
 

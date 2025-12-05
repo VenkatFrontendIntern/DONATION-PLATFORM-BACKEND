@@ -12,6 +12,7 @@ import campaignRoutes from './routes/campaign.routes.js';
 import donationRoutes from './routes/donation.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import upiRoutes from './routes/upi.routes.js';
+import statsRoutes from './routes/stats.routes.js';
 
 // Connect to MongoDB (for non-serverless environments)
 // In Vercel serverless, connection will be established per request if needed
@@ -86,6 +87,7 @@ app.use('/api/campaign', campaignRoutes);
 app.use('/api/donation', donationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upi', upiRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

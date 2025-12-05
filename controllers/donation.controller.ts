@@ -6,6 +6,7 @@ import { generateCertificate } from '../services/pdf.service.js';
 import { sendEmail } from '../utils/email.js';
 import { logger } from '../utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
+import { sendSuccess, sendError } from '../utils/apiResponse.js';
 
 interface CreateOrderBody {
   campaignId: string;
@@ -20,7 +21,7 @@ interface CreateOrderBody {
 export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
@@ -28,7 +29,7 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
 
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
-      res.status(404).json({ message: 'Campaign not found' });
+      sendError(res, 'Campaign not found', 404);
       return;
     }
 
@@ -50,14 +51,17 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
       donorPan,
     });
 
-    res.json({
-      success: true,
-      order,
-      donationId: donation._id.toString(),
-    });
+    sendSuccess(
+      res,
+      {
+        order,
+        donationId: donation._id.toString(),
+      },
+      'Order created successfully'
+    );
   } catch (error: any) {
     logger.error('Create order error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -71,7 +75,7 @@ interface VerifyPaymentBody {
 export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
@@ -79,7 +83,7 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
 
     const donation = await Donation.findById(donationId);
     if (!donation) {
-      res.status(404).json({ message: 'Donation not found' });
+      sendError(res, 'Donation not found', 404);
       return;
     }
 
@@ -89,7 +93,7 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
     if (!isValid) {
       donation.status = 'failed';
       await donation.save();
-      res.status(400).json({ message: 'Payment verification failed' });
+      sendError(res, 'Payment verification failed', 400);
       return;
     }
 
@@ -133,43 +137,36 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       logger.error('Certificate generation error:', certError);
     }
 
-    res.json({
-      success: true,
-      message: 'Payment verified successfully',
-      donation,
-    });
+    sendSuccess(res, { donation }, 'Payment verified successfully');
   } catch (error: any) {
     logger.error('Verify payment error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const getCertificate = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
     const donation = await Donation.findById(req.params.id);
 
     if (!donation) {
-      res.status(404).json({ message: 'Donation not found' });
+      sendError(res, 'Donation not found', 404);
       return;
     }
 
     // Check if user owns the donation
     if (donation.donorId && donation.donorId.toString() !== req.user._id.toString()) {
       logger.warn(`Authorization failed: User ${req.user._id} attempted to access donation ${req.params.id} owned by ${donation.donorId}`);
-      res.status(403).json({ 
-        message: 'You are not authorized to access this donation certificate. Only the donor can access their own certificate.',
-        code: 'NOT_DONATION_OWNER'
-      });
+      sendError(res, 'You are not authorized to access this donation certificate. Only the donor can access their own certificate.', 403);
       return;
     }
 
     if (!donation.certificateUrl) {
-      res.status(404).json({ message: 'Certificate not available' });
+      sendError(res, 'Certificate not available', 404);
       return;
     }
 
@@ -188,7 +185,7 @@ export const getCertificate = async (req: Request, res: Response): Promise<void>
 export const getMyDonations = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
@@ -196,13 +193,10 @@ export const getMyDonations = async (req: Request, res: Response): Promise<void>
       .populate('campaignId', 'title coverImage')
       .sort({ createdAt: -1 });
 
-    res.json({
-      success: true,
-      donations,
-    });
+    sendSuccess(res, { donations }, 'Donations retrieved successfully');
   } catch (error: any) {
     logger.error('Get my donations error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -217,13 +211,10 @@ export const getCampaignDonations = async (req: Request, res: Response): Promise
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
 
-    res.json({
-      success: true,
-      donations,
-    });
+    sendSuccess(res, { donations }, 'Donations retrieved successfully');
   } catch (error: any) {
     logger.error('Get campaign donations error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 

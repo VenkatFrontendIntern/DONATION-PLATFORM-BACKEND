@@ -4,6 +4,7 @@ import { Donation } from '../models/Donation.model.js';
 import { User } from '../models/User.model.js';
 import { Category } from '../models/Category.model.js';
 import { logger } from '../utils/logger.js';
+import { sendSuccess, sendError, sendPaginated } from '../utils/apiResponse.js';
 
 export const getPendingCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -19,33 +20,34 @@ export const getPendingCampaigns = async (req: Request, res: Response): Promise<
     const total = await Campaign.countDocuments({ status });
     const pages = Math.ceil(total / Number(limit));
 
-    res.json({
-      success: true,
+    sendPaginated(
+      res,
       campaigns,
-      pagination: {
+      {
         page: Number(page),
         limit: Number(limit),
         total,
         pages,
       },
-    });
+      'Campaigns retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get pending campaigns error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const approveCampaign = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
     const campaign = await Campaign.findById(req.params.id);
 
     if (!campaign) {
-      res.status(404).json({ message: 'Campaign not found' });
+      sendError(res, 'Campaign not found', 404);
       return;
     }
 
@@ -54,20 +56,17 @@ export const approveCampaign = async (req: Request, res: Response): Promise<void
     campaign.approvedAt = new Date();
     await campaign.save();
 
-    res.json({
-      success: true,
-      campaign,
-    });
+    sendSuccess(res, { campaign }, 'Campaign approved successfully');
   } catch (error: any) {
     logger.error('Approve campaign error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
 export const rejectCampaign = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentication required' });
+      sendError(res, 'Authentication required', 401);
       return;
     }
 
@@ -75,7 +74,7 @@ export const rejectCampaign = async (req: Request, res: Response): Promise<void>
     const campaign = await Campaign.findById(req.params.id);
 
     if (!campaign) {
-      res.status(404).json({ message: 'Campaign not found' });
+      sendError(res, 'Campaign not found', 404);
       return;
     }
 
@@ -84,13 +83,10 @@ export const rejectCampaign = async (req: Request, res: Response): Promise<void>
     campaign.approvedBy = req.user._id;
     await campaign.save();
 
-    res.json({
-      success: true,
-      campaign,
-    });
+    sendSuccess(res, { campaign }, 'Campaign rejected successfully');
   } catch (error: any) {
     logger.error('Reject campaign error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -117,21 +113,24 @@ export const getStats = async (req: Request, res: Response): Promise<void> => {
       Campaign.countDocuments({ status: 'rejected' }),
     ]);
 
-    res.json({
-      success: true,
-      stats: {
-        totalUsers,
-        totalCampaigns,
-        totalDonations,
-        totalAmount: totalAmount[0]?.total || 0,
-        pendingCampaigns,
-        approvedCampaigns,
-        rejectedCampaigns,
+    sendSuccess(
+      res,
+      {
+        stats: {
+          totalUsers,
+          totalCampaigns,
+          totalDonations,
+          totalAmount: totalAmount[0]?.total || 0,
+          pendingCampaigns,
+          approvedCampaigns,
+          rejectedCampaigns,
+        },
       },
-    });
+      'Stats retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get stats error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -154,17 +153,22 @@ export const getAllUsers = async (req: Request, res: Response): Promise<void> =>
       .skip((Number(page) - 1) * Number(limit));
 
     const total = await User.countDocuments(query);
+    const pages = Math.ceil(total / Number(limit));
 
-    res.json({
-      success: true,
+    sendPaginated(
+      res,
       users,
-      total,
-      page: Number(page),
-      limit: Number(limit),
-    });
+      {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages,
+      },
+      'Users retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get all users error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -185,17 +189,22 @@ export const getAllDonations = async (req: Request, res: Response): Promise<void
       .skip((Number(page) - 1) * Number(limit));
 
     const total = await Donation.countDocuments(query);
+    const pages = Math.ceil(total / Number(limit));
 
-    res.json({
-      success: true,
+    sendPaginated(
+      res,
       donations,
-      total,
-      page: Number(page),
-      limit: Number(limit),
-    });
+      {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages,
+      },
+      'Donations retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get all donations error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -209,13 +218,10 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
       icon,
     });
 
-    res.status(201).json({
-      success: true,
-      category,
-    });
+    sendSuccess(res, { category }, 'Category created successfully', 201);
   } catch (error: any) {
     logger.error('Create category error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -223,13 +229,10 @@ export const getAllCategories = async (req: Request, res: Response): Promise<voi
   try {
     const categories = await Category.find({ isActive: true }).sort({ name: 1 });
 
-    res.json({
-      success: true,
-      categories,
-    });
+    sendSuccess(res, { categories }, 'Categories retrieved successfully');
   } catch (error: any) {
     logger.error('Get all categories error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
@@ -237,13 +240,10 @@ export const deleteCategory = async (req: Request, res: Response): Promise<void>
   try {
     await Category.findByIdAndDelete(req.params.id);
 
-    res.json({
-      success: true,
-      message: 'Category deleted',
-    });
+    sendSuccess(res, null, 'Category deleted successfully');
   } catch (error: any) {
     logger.error('Delete category error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, 'Server error', 500, error);
   }
 };
 
