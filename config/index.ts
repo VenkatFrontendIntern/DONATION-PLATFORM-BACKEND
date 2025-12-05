@@ -1,7 +1,9 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import path from 'path';
 
-dotenv.config();
+// Load .env file from the project root
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 // MongoDB Connection - optimized for serverless (Vercel)
 let cachedConnection: typeof mongoose | null = null;
@@ -14,11 +16,15 @@ export const connectDB = async (): Promise<void> => {
       return;
     }
 
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/donation-platform';
+    const mongoUri = process.env.MONGODB_URI;
     
     if (!mongoUri) {
+      console.error('ERROR: MONGODB_URI is not defined in environment variables');
+      console.error('Please ensure your .env file contains MONGODB_URI');
       throw new Error('MONGODB_URI is not defined');
     }
+    
+    console.log('Connecting to MongoDB:', mongoUri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide credentials in logs
 
     // Close existing connection if it exists but is not ready
     if (mongoose.connection.readyState !== 0) {

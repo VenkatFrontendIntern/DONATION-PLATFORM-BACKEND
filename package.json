@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "tsx scripts/seedData.ts",
+    "seed:campaigns": "tsx scripts/seedCampaigns.ts",
     "clear": "tsx scripts/clearData.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

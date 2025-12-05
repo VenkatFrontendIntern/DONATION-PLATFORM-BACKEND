@@ -40,6 +40,7 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
       .lean();
 
     const total = await Campaign.countDocuments(query);
+    const pages = Math.ceil(total / limitNum);
 
     res.json({
       success: true,
@@ -47,6 +48,7 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
       total,
       page: pageNum,
       limit: limitNum,
+      pages,
     });
   } catch (error: any) {
     logger.error('Get campaigns error:', error);
