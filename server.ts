@@ -5,6 +5,7 @@ import { apiLimiter } from './middlewares/rateLimiter.js';
 import { ensureDBConnection } from './middlewares/db.middleware.js';
 import { logger } from './utils/logger.js';
 import { initializeAdmin } from './utils/initAdmin.js';
+import { extractErrorMessage } from './utils/apiResponse.js';
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
@@ -97,10 +98,26 @@ app.get('/health', (req: Request, res: Response) => {
 // Error handling middleware
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   logger.error('Error:', err);
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal server error',
-    ...(config.nodeEnv === 'development' && { stack: err.stack }),
-  });
+  
+  const statusCode = err.status || err.statusCode || 500;
+  const message = err.message || extractErrorMessage(err) || 'Internal server error';
+  
+  const response: any = {
+    status: 'error',
+    message,
+    data: null,
+  };
+
+  // Include error details in development mode
+  if (config.nodeEnv === 'development') {
+    response.error = {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+  }
+
+  res.status(statusCode).json(response);
 };
 app.use(errorHandler);
 

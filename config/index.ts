@@ -12,19 +12,14 @@ export const connectDB = async (): Promise<void> => {
   try {
     // Reuse existing connection if available (important for serverless)
     if (cachedConnection && mongoose.connection.readyState === 1) {
-      console.log('Using existing MongoDB connection');
       return;
     }
 
     const mongoUri = process.env.MONGODB_URI;
     
     if (!mongoUri) {
-      console.error('ERROR: MONGODB_URI is not defined in environment variables');
-      console.error('Please ensure your .env file contains MONGODB_URI');
       throw new Error('MONGODB_URI is not defined');
     }
-    
-    console.log('Connecting to MongoDB:', mongoUri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide credentials in logs
 
     // Close existing connection if it exists but is not ready
     if (mongoose.connection.readyState !== 0) {
@@ -37,9 +32,7 @@ export const connectDB = async (): Promise<void> => {
     });
     
     cachedConnection = conn;
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
-    console.error('MongoDB connection error:', error);
     // Don't exit in serverless environment - let Vercel handle it
     if (process.env.VERCEL !== '1') {
       process.exit(1);

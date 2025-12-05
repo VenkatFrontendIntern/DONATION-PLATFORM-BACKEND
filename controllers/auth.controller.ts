@@ -105,7 +105,7 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
     );
   } catch (error: any) {
     logger.error('Signup error:', error);
-    sendError(res, 'Server error during signup', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -190,7 +190,7 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
     );
   } catch (error: any) {
     logger.error('Login error:', error);
-    sendError(res, 'Server error during login', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -227,7 +227,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     );
   } catch (error: any) {
     logger.error('Get me error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -272,7 +272,7 @@ export const refreshToken = async (req: Request<{}, {}, RefreshTokenBody>, res: 
     );
   } catch (error: any) {
     logger.error('Refresh token error:', error);
-    sendError(res, 'Invalid or expired refresh token', 401, error);
+    sendError(res, undefined, 401, error);
   }
 };
 
@@ -303,7 +303,7 @@ export const forgotPassword = async (req: Request<{}, {}, ForgotPasswordBody>, r
     sendSuccess(res, null, 'Password reset link sent to email');
   } catch (error: any) {
     logger.error('Forgot password error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -333,7 +333,7 @@ export const resetPassword = async (req: Request<{}, {}, ResetPasswordBody>, res
     sendSuccess(res, null, 'Password reset successful');
   } catch (error: any) {
     logger.error('Reset password error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 

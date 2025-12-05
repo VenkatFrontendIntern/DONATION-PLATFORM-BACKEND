@@ -59,6 +59,7 @@ const campaignSchema = new Schema<ICampaign>(
     raisedAmount: {
       type: Number,
       default: 0,
+      min: [0, 'Raised amount cannot be negative'],
     },
     category: {
       type: Schema.Types.ObjectId,
@@ -80,10 +81,20 @@ const campaignSchema = new Schema<ICampaign>(
     endDate: {
       type: Date,
       required: [true, 'End date is required'],
+      validate: {
+        validator: function(value: Date) {
+          // Allow end date to be at least 1 day in the future
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          return value >= tomorrow;
+        },
+        message: 'End date must be at least 1 day in the future',
+      },
     },
     donorCount: {
       type: Number,
       default: 0,
+      min: [0, 'Donor count cannot be negative'],
     },
     rejectionReason: {
       type: String,
@@ -101,10 +112,12 @@ const campaignSchema = new Schema<ICampaign>(
     views: {
       type: Number,
       default: 0,
+      min: [0, 'Views cannot be negative'],
     },
     shares: {
       type: Number,
       default: 0,
+      min: [0, 'Shares cannot be negative'],
     },
     socialMedia: {
       facebook: { type: String, default: null },

@@ -56,7 +56,7 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
     );
   } catch (error: any) {
     logger.error('Get campaigns error:', error);
-    sendError(res, 'Failed to fetch campaigns', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -78,7 +78,7 @@ export const getCampaignById = async (req: Request, res: Response): Promise<void
     sendSuccess(res, { campaign }, 'Campaign retrieved successfully');
   } catch (error: any) {
     logger.error('Get campaign error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -140,7 +140,7 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, { campaign }, 'Campaign created successfully', 201);
   } catch (error: any) {
     logger.error('Create campaign error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -193,7 +193,7 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, { campaign: updatedCampaign }, 'Campaign updated successfully');
   } catch (error: any) {
     logger.error('Update campaign error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -223,7 +223,7 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, null, 'Campaign deleted successfully');
   } catch (error: any) {
     logger.error('Delete campaign error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -243,7 +243,7 @@ export const getMyCampaigns = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, { campaigns }, 'Campaigns retrieved successfully');
   } catch (error: any) {
     logger.error('Get my campaigns error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -254,7 +254,7 @@ export const getCategories = async (req: Request, res: Response): Promise<void> 
     sendSuccess(res, { categories }, 'Categories retrieved successfully');
   } catch (error: any) {
     logger.error('Get categories error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 

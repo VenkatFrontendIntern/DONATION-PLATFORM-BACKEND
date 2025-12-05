@@ -22,9 +22,16 @@ const categorySchema = new Schema<ICategory>(
       type: String,
       unique: true,
       lowercase: true,
+      trim: true,
     },
-    description: String,
-    icon: String,
+    description: {
+      type: String,
+      trim: true,
+    },
+    icon: {
+      type: String,
+      trim: true,
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -42,6 +49,10 @@ categorySchema.pre('save', function (next) {
   }
   next();
 });
+
+// Indexes for optimized query performance
+categorySchema.index({ slug: 1 });
+categorySchema.index({ isActive: 1 });
 
 export const Category = mongoose.model<ICategory>('Category', categorySchema);
 

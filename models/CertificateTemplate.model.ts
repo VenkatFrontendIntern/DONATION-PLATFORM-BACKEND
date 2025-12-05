@@ -13,12 +13,13 @@ const certificateTemplateSchema = new Schema<ICertificateTemplate>(
   {
     name: {
       type: String,
-      required: true,
+      required: [true, 'Template name is required'],
+      trim: true,
       default: 'Default 80G Certificate',
     },
     templateData: {
       type: Schema.Types.Mixed,
-      required: true,
+      required: [true, 'Template data is required'],
     },
     isActive: {
       type: Boolean,
@@ -34,6 +35,10 @@ const certificateTemplateSchema = new Schema<ICertificateTemplate>(
     timestamps: true,
   }
 );
+
+// Indexes for optimized query performance
+certificateTemplateSchema.index({ isActive: 1 });
+certificateTemplateSchema.index({ uploadedBy: 1 });
 
 export const CertificateTemplate = mongoose.model<ICertificateTemplate>('CertificateTemplate', certificateTemplateSchema);
 

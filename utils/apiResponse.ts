@@ -45,27 +45,81 @@ export const sendSuccess = <T>(
 };
 
 /**
+ * Extract user-friendly error message from various error types
+ * @param error Error object (Mongoose, Validation, etc.)
+ * @returns User-friendly error message
+ */
+export const extractErrorMessage = (error: any): string => {
+  // Mongoose validation error
+  if (error.name === 'ValidationError') {
+    const errors = error.errors || {};
+    const firstError = Object.values(errors)[0] as any;
+    if (firstError?.message) {
+      return firstError.message;
+    }
+    return 'Validation failed. Please check your input.';
+  }
+
+  // Mongoose duplicate key error
+  if (error.code === 11000) {
+    const field = Object.keys(error.keyPattern || {})[0];
+    if (field) {
+      return `${field.charAt(0).toUpperCase() + field.slice(1)} already exists. Please use a different value.`;
+    }
+    return 'This record already exists.';
+  }
+
+  // Mongoose cast error (invalid ObjectId, etc.)
+  if (error.name === 'CastError') {
+    return `Invalid ${error.path || 'data'} provided.`;
+  }
+
+  // JWT errors
+  if (error.name === 'JsonWebTokenError') {
+    return 'Invalid authentication token.';
+  }
+  if (error.name === 'TokenExpiredError') {
+    return 'Authentication token has expired. Please login again.';
+  }
+
+  // Custom error with message
+  if (error.message) {
+    return error.message;
+  }
+
+  // Default fallback
+  return 'An unexpected error occurred. Please try again.';
+};
+
+/**
  * Send an error API response
  * @param res Express Response object
- * @param message Error message
+ * @param message Error message (optional, will extract from error if not provided)
  * @param statusCode HTTP status code (default: 400)
- * @param error Optional error details (only in development)
+ * @param error Optional error object to extract message from
  */
 export const sendError = (
   res: Response,
-  message: string = 'An error occurred',
+  message?: string,
   statusCode: number = 400,
   error?: any
 ): void => {
+  // Extract user-friendly message if not provided
+  const errorMessage = message || (error ? extractErrorMessage(error) : 'An error occurred');
+
   const response: ApiResponse = {
     status: 'error',
-    message,
+    message: errorMessage,
     data: null,
   };
 
   // Include error details in development mode
   if (process.env.NODE_ENV === 'development' && error) {
-    (response as any).error = error.message || error;
+    (response as any).error = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
   }
 
   res.status(statusCode).json(response);

@@ -57,11 +57,15 @@ const userSchema = new Schema<IUser>(
     phone: {
       type: String,
       default: null,
+      match: [/^[6-9]\d{9}$/, 'Please provide a valid 10-digit Indian phone number'],
+      sparse: true,
     },
     pan: {
       type: String,
       default: null,
       uppercase: true,
+      match: [/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Please provide a valid PAN number'],
+      sparse: true,
     },
     address: {
       street: String,
@@ -73,9 +77,18 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
-    resetPasswordToken: String,
-    resetPasswordExpire: Date,
-    refreshToken: String,
+    resetPasswordToken: {
+      type: String,
+      select: false,
+    },
+    resetPasswordExpire: {
+      type: Date,
+      select: false,
+    },
+    refreshToken: {
+      type: String,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -93,6 +106,10 @@ userSchema.pre('save', async function (next) {
 userSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// Indexes for optimized query performance
+userSchema.index({ email: 1 });
+userSchema.index({ role: 1 });
 
 export const User = mongoose.model<IUser>('User', userSchema);
 

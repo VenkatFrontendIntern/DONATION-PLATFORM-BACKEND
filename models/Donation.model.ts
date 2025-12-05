@@ -29,7 +29,7 @@ const donationSchema = new Schema<IDonation>(
     campaignId: {
       type: Schema.Types.ObjectId,
       ref: 'Campaign',
-      required: true,
+      required: [true, 'Campaign ID is required'],
     },
     donorId: {
       type: Schema.Types.ObjectId,
@@ -40,6 +40,7 @@ const donationSchema = new Schema<IDonation>(
       type: Number,
       required: [true, 'Donation amount is required'],
       min: [1, 'Minimum donation is ₹1'],
+      max: [10000000, 'Maximum donation is ₹1,00,00,000'],
     },
     isAnonymous: {
       type: Boolean,
@@ -48,7 +49,7 @@ const donationSchema = new Schema<IDonation>(
     paymentMethod: {
       type: String,
       enum: ['razorpay', 'upi'],
-      required: true,
+      required: [true, 'Payment method is required'],
     },
     razorpayOrderId: {
       type: String,
@@ -73,19 +74,28 @@ const donationSchema = new Schema<IDonation>(
     },
     donorName: {
       type: String,
-      required: true,
+      required: [true, 'Donor name is required'],
+      trim: true,
     },
     donorEmail: {
       type: String,
-      required: true,
+      required: [true, 'Donor email is required'],
+      lowercase: true,
+      trim: true,
+      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
     },
     donorPhone: {
       type: String,
       default: null,
+      match: [/^[6-9]\d{9}$/, 'Please provide a valid 10-digit Indian phone number'],
+      sparse: true,
     },
     donorPan: {
       type: String,
       default: null,
+      uppercase: true,
+      match: [/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Please provide a valid PAN number'],
+      sparse: true,
     },
     message: {
       type: String,
@@ -114,10 +124,13 @@ const donationSchema = new Schema<IDonation>(
   }
 );
 
-// Indexes
+// Indexes for optimized query performance
 donationSchema.index({ campaignId: 1, createdAt: -1 });
 donationSchema.index({ donorId: 1 });
 donationSchema.index({ status: 1 });
+donationSchema.index({ donorEmail: 1 });
+donationSchema.index({ createdAt: -1 });
+donationSchema.index({ paymentMethod: 1, status: 1 });
 // certificateNumber index is automatically created by unique: true constraint
 
 export const Donation = mongoose.model<IDonation>('Donation', donationSchema);

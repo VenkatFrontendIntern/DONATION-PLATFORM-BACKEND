@@ -8,21 +8,19 @@ class Logger {
   }
 
   info(message: string, ...args: any[]): void {
-    console.log(this.formatMessage('info', message), ...args);
+    // Logging disabled
   }
 
   warn(message: string, ...args: any[]): void {
-    console.warn(this.formatMessage('warn', message), ...args);
+    // Logging disabled
   }
 
   error(message: string, ...args: any[]): void {
-    console.error(this.formatMessage('error', message), ...args);
+    // Logging disabled
   }
 
   debug(message: string, ...args: any[]): void {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug(this.formatMessage('debug', message), ...args);
-    }
+    // Logging disabled
   }
 }
 

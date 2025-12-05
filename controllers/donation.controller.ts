@@ -61,7 +61,7 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
     );
   } catch (error: any) {
     logger.error('Create order error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -140,7 +140,7 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
     sendSuccess(res, { donation }, 'Payment verified successfully');
   } catch (error: any) {
     logger.error('Verify payment error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -178,7 +178,7 @@ export const getCertificate = async (req: Request, res: Response): Promise<void>
     res.send(certificateBuffer);
   } catch (error: any) {
     logger.error('Get certificate error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -196,7 +196,7 @@ export const getMyDonations = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, { donations }, 'Donations retrieved successfully');
   } catch (error: any) {
     logger.error('Get my donations error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 
@@ -214,7 +214,7 @@ export const getCampaignDonations = async (req: Request, res: Response): Promise
     sendSuccess(res, { donations }, 'Donations retrieved successfully');
   } catch (error: any) {
     logger.error('Get campaign donations error:', error);
-    sendError(res, 'Server error', 500, error);
+    sendError(res, undefined, 500, error);
   }
 };
 

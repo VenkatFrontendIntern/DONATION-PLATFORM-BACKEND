@@ -22,24 +22,28 @@ const paymentVerificationSchema = new Schema<IPaymentVerification>(
     },
     razorpayPaymentId: {
       type: String,
-      required: true,
+      required: [true, 'Razorpay payment ID is required'],
+      unique: true,
     },
     razorpayOrderId: {
       type: String,
-      required: true,
+      required: [true, 'Razorpay order ID is required'],
     },
     amount: {
       type: Number,
-      required: true,
+      required: [true, 'Amount is required'],
+      min: [0, 'Amount cannot be negative'],
     },
     currency: {
       type: String,
       default: 'INR',
+      enum: ['INR', 'USD', 'EUR'],
+      uppercase: true,
     },
     status: {
       type: String,
       enum: ['verified', 'failed'],
-      required: true,
+      required: [true, 'Verification status is required'],
     },
     verificationData: {
       type: Schema.Types.Mixed,
@@ -55,7 +59,11 @@ const paymentVerificationSchema = new Schema<IPaymentVerification>(
   }
 );
 
-paymentVerificationSchema.index({ razorpayPaymentId: 1 });
+// Indexes for optimized query performance
+paymentVerificationSchema.index({ razorpayPaymentId: 1 }, { unique: true });
+paymentVerificationSchema.index({ donationId: 1 });
+paymentVerificationSchema.index({ status: 1 });
+paymentVerificationSchema.index({ verifiedAt: -1 });
 
 export const PaymentVerification = mongoose.model<IPaymentVerification>('PaymentVerification', paymentVerificationSchema);
 
