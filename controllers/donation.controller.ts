@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Donation, IDonation } from '../models/Donation.model.js';
 import { Campaign } from '../models/Campaign.model.js';
 import { createRazorpayOrder, verifyRazorpayPayment } from '../services/razorpay.service.js';
@@ -72,75 +73,187 @@ interface VerifyPaymentBody {
   razorpaySignature: string;
 }
 
+// Retry utility for network failures
+const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Don't retry on non-network errors (validation, auth, etc.)
+      if (error.statusCode && error.statusCode < 500) {
+        throw error;
+      }
+      
+      // Check if it's a network error
+      const isNetworkError = 
+        error.code === 'ECONNRESET' ||
+        error.code === 'ETIMEDOUT' ||
+        error.code === 'ENOTFOUND' ||
+        error.message?.includes('network') ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('ECONNREFUSED');
+      
+      if (!isNetworkError && attempt < maxRetries - 1) {
+        throw error; // Not a network error, don't retry
+      }
+      
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        logger.warn(`Network error on attempt ${attempt + 1}, retrying in ${delay}ms...`, error.message);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
 export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res: Response): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     if (!req.user) {
+      await session.abortTransaction();
+      await session.endSession();
       sendError(res, 'Authentication required', 401);
       return;
     }
 
     const { donationId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
 
-    const donation = await Donation.findById(donationId);
-    if (!donation) {
+    // Idempotency check: If payment is already verified, return success
+    const existingDonation = await Donation.findById(donationId).session(session);
+    if (!existingDonation) {
+      await session.abortTransaction();
+      await session.endSession();
       sendError(res, 'Donation not found', 404);
       return;
     }
 
-    // Verify payment with Razorpay
-    const isValid = await verifyRazorpayPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+    // Check if already processed
+    if (existingDonation.status === 'success' && existingDonation.razorpayPaymentId === razorpayPaymentId) {
+      await session.commitTransaction();
+      await session.endSession();
+      logger.info(`Payment ${razorpayPaymentId} already verified for donation ${donationId}`);
+      sendSuccess(res, { donation: existingDonation }, 'Payment already verified');
+      return;
+    }
+
+    // Prevent duplicate processing
+    if (existingDonation.status === 'success' && existingDonation.razorpayPaymentId !== razorpayPaymentId) {
+      await session.abortTransaction();
+      await session.endSession();
+      logger.warn(`Donation ${donationId} already has a different successful payment`);
+      sendError(res, 'Donation already has a successful payment', 400);
+      return;
+    }
+
+    // Verify payment with Razorpay (with retry for network failures)
+    const isValid = await retryWithBackoff(
+      () => verifyRazorpayPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature),
+      3,
+      1000
+    );
 
     if (!isValid) {
-      donation.status = 'failed';
-      await donation.save();
+      existingDonation.status = 'failed';
+      await existingDonation.save({ session });
+      await session.commitTransaction();
+      await session.endSession();
       sendError(res, 'Payment verification failed', 400);
       return;
     }
 
-    // Update donation
-    donation.status = 'success';
-    donation.razorpayPaymentId = razorpayPaymentId;
-    donation.razorpaySignature = razorpaySignature;
-    donation.certificateNumber = `80G-${uuidv4().substring(0, 8).toUpperCase()}`;
-    await donation.save();
+    // Atomic transaction: Update donation and campaign together
+    const certificateNumber = `80G-${uuidv4().substring(0, 8).toUpperCase()}`;
+    
+    // Update donation within transaction
+    existingDonation.status = 'success';
+    existingDonation.razorpayPaymentId = razorpayPaymentId;
+    existingDonation.razorpaySignature = razorpaySignature;
+    existingDonation.certificateNumber = certificateNumber;
+    await existingDonation.save({ session });
 
-    // Update campaign
-    const campaign = await Campaign.findById(donation.campaignId);
+    // Update campaign within transaction
+    const campaign = await Campaign.findById(existingDonation.campaignId).session(session);
     if (campaign) {
-      campaign.raisedAmount += donation.amount;
+      campaign.raisedAmount += existingDonation.amount;
       campaign.donorCount += 1;
-      await campaign.save();
+      await campaign.save({ session });
     }
 
-    // Generate and send certificate
-    try {
-      const certificateBuffer = await generateCertificate(donation);
-      const certificateUrl = await uploadCertificate(certificateBuffer, donation.certificateNumber!);
-      donation.certificateUrl = certificateUrl;
-      donation.certificateSent = true;
-      await donation.save();
+    // Commit transaction - all database operations succeed or fail together
+    await session.commitTransaction();
+    await session.endSession();
 
-      // Send email with certificate
-      await sendEmail({
-        to: donation.donorEmail,
+    logger.info(`Payment ${razorpayPaymentId} verified successfully for donation ${donationId}`);
+
+    // Reload donation after transaction to get latest data
+    const updatedDonation = await Donation.findById(donationId);
+    if (!updatedDonation) {
+      sendError(res, 'Donation not found after update', 500);
+      return;
+    }
+
+    // Generate and send certificate (outside transaction - non-critical operation)
+    // If this fails, payment is still successful
+    try {
+      const certificateBuffer = await generateCertificate(updatedDonation);
+      const certificateUrl = await uploadCertificate(certificateBuffer, certificateNumber);
+      updatedDonation.certificateUrl = certificateUrl;
+      updatedDonation.certificateSent = true;
+      await updatedDonation.save();
+
+      // Send email with certificate (non-blocking)
+      sendEmail({
+        to: updatedDonation.donorEmail,
         subject: '80G Tax Exemption Certificate - Engala Trust',
         html: `
           <div style="font-family: Arial, sans-serif;">
             <h2>Thank you for your donation!</h2>
             <p>Your 80G tax exemption certificate is attached.</p>
-            <p>Certificate Number: ${donation.certificateNumber}</p>
-            <p>Donation Amount: ₹${donation.amount.toLocaleString('en-IN')}</p>
+            <p>Certificate Number: ${certificateNumber}</p>
+            <p>Donation Amount: ₹${updatedDonation.amount.toLocaleString('en-IN')}</p>
           </div>
         `,
+      }).catch((emailError: any) => {
+        logger.error('Email sending failed (non-critical):', emailError);
       });
     } catch (certError: any) {
-      logger.error('Certificate generation error:', certError);
+      logger.error('Certificate generation error (non-critical):', certError);
+      // Don't fail the request if certificate generation fails
     }
 
-    sendSuccess(res, { donation }, 'Payment verified successfully');
+    sendSuccess(res, { donation: updatedDonation }, 'Payment verified successfully');
   } catch (error: any) {
+    // Rollback transaction on any error
+    await session.abortTransaction();
+    await session.endSession();
+    
     logger.error('Verify payment error:', error);
-    sendError(res, undefined, 500, error);
+    
+    // Check if it's a network error
+    const isNetworkError = 
+      error.code === 'ECONNRESET' ||
+      error.code === 'ETIMEDOUT' ||
+      error.code === 'ENOTFOUND' ||
+      error.message?.includes('network') ||
+      error.message?.includes('timeout');
+    
+    if (isNetworkError) {
+      sendError(res, 'Network error occurred. Please check your payment status and try again if needed.', 503);
+    } else {
+      sendError(res, undefined, 500, error);
+    }
   }
 };
 
