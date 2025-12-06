@@ -27,7 +27,6 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
       ];
     }
 
-    // Validate and parse pagination parameters
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 10)); // Max 100, min 1
 
@@ -71,7 +70,6 @@ export const getCampaignById = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Increment views
     campaign.views += 1;
     await campaign.save();
 
@@ -98,10 +96,8 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Upload cover image directly from buffer to Cloudinary
     const coverImageUrl = await uploadToCloudinary(coverImageFile);
 
-    // Upload gallery images directly from buffer to Cloudinary
     const galleryImageUrls: string[] = [];
     for (const file of galleryFiles) {
       const url = await uploadToCloudinary(file);
@@ -121,7 +117,6 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
       status: 'pending',
     };
 
-    // Add social media links if provided
     if (req.body.socialMedia) {
       campaignData.socialMedia = JSON.parse(req.body.socialMedia);
     } else {
@@ -158,7 +153,6 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Check if user owns the campaign
     if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       logger.warn(`Authorization failed: User ${req.user._id} attempted to update campaign ${req.params.id} owned by ${campaign.organizerId}`);
       sendError(res, 'You are not authorized to update this campaign. Only the campaign organizer or an admin can update it.', 403);
@@ -211,16 +205,13 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Check if user owns the campaign or is admin
     if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       logger.warn(`Authorization failed: User ${req.user._id} attempted to delete campaign ${req.params.id} owned by ${campaign.organizerId}`);
       sendError(res, 'You are not authorized to delete this campaign. Only the campaign organizer or an admin can delete it.', 403);
       return;
     }
 
-    // Delete images from Cloudinary before deleting the campaign
     try {
-      // Delete cover image
       if (campaign.coverImage) {
         const coverImagePublicId = extractPublicIdFromUrl(campaign.coverImage);
         if (coverImagePublicId) {
@@ -231,7 +222,6 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
         }
       }
 
-      // Delete gallery images
       if (campaign.galleryImages && campaign.galleryImages.length > 0) {
         for (const imageUrl of campaign.galleryImages) {
           const galleryImagePublicId = extractPublicIdFromUrl(imageUrl);
@@ -244,12 +234,9 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
         }
       }
     } catch (cloudinaryError: any) {
-      // Log the error but don't fail the campaign deletion
-      // This ensures the campaign is deleted even if Cloudinary deletion fails
       logger.error('Error deleting images from Cloudinary:', cloudinaryError);
     }
 
-    // Delete the campaign from database
     await Campaign.findByIdAndDelete(req.params.id);
 
     sendSuccess(res, null, 'Campaign deleted successfully');

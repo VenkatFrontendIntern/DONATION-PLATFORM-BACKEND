@@ -47,7 +47,6 @@ const generateToken = (id: string): string => {
   } as jwt.SignOptions);
 };
 
-// Generate Refresh Token
 const generateRefreshToken = (id: string): string => {
   if (!config.jwtRefreshSecret) {
     throw new Error('JWT refresh secret not configured');
@@ -57,21 +56,16 @@ const generateRefreshToken = (id: string): string => {
   } as jwt.SignOptions);
 };
 
-// @desc    Register user
-// @route   POST /api/auth/signup
-// @access  Public
 export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): Promise<void> => {
   try {
     const { name, email, password, phone, pan } = req.body;
 
-    // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       sendError(res, 'User already exists with this email', 400);
       return;
     }
 
-    // Create user
     const user = await User.create({
       name,
       email,
@@ -83,7 +77,6 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
     const token = generateToken(user._id.toString());
     const refreshToken = generateRefreshToken(user._id.toString());
 
-    // Save refresh token
     user.refreshToken = refreshToken;
     await user.save();
 
@@ -109,14 +102,10 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
   }
 };
 
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
 export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
     if (!email || !password) {
       sendError(res, 'Email and password are required', 400);
       return;
@@ -127,17 +116,14 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
       return;
     }
 
-    // Normalize email (lowercase, trim)
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check if user exists and get password
     const user = await User.findOne({ email: normalizedEmail }).select('+password');
     if (!user) {
       sendError(res, 'Invalid credentials', 401);
       return;
     }
 
-    // Check password
     let isMatch: boolean;
     try {
       isMatch = await user.comparePassword(password);
@@ -152,7 +138,6 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
       return;
     }
 
-    // Generate tokens
     let token: string;
     let refreshToken: string;
     try {
@@ -164,13 +149,11 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
       return;
     }
 
-    // Save refresh token
     try {
       user.refreshToken = refreshToken;
       await user.save();
     } catch (saveError: any) {
       logger.error('Error saving refresh token:', saveError);
-      // Continue anyway - tokens are generated, just not saved
     }
 
     sendSuccess(
@@ -194,9 +177,6 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
   }
 };
 
-// @desc    Get current user
-// @route   GET /api/auth/me
-// @access  Private
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
@@ -231,9 +211,6 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// @desc    Refresh token
-// @route   POST /api/auth/refresh
-// @access  Public
 export const refreshToken = async (req: Request<{}, {}, RefreshTokenBody>, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;
@@ -276,27 +253,21 @@ export const refreshToken = async (req: Request<{}, {}, RefreshTokenBody>, res: 
   }
 };
 
-// @desc    Forgot password
-// @route   POST /api/auth/forgot
-// @access  Public
 export const forgotPassword = async (req: Request<{}, {}, ForgotPasswordBody>, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
 
     const user = await User.findOne({ email });
     if (!user) {
-      // Don't reveal if user exists
       sendSuccess(res, null, 'If email exists, password reset link has been sent');
       return;
     }
 
-    // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.resetPasswordExpire = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    user.resetPasswordExpire = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
 
-    // Send email
     const resetUrl = `${config.frontendUrl}/reset-password?token=${resetToken}`;
     await sendPasswordResetEmail(email, resetToken, resetUrl);
 
@@ -307,9 +278,6 @@ export const forgotPassword = async (req: Request<{}, {}, ForgotPasswordBody>, r
   }
 };
 
-// @desc    Reset password
-// @route   POST /api/auth/reset-password
-// @access  Public
 export const resetPassword = async (req: Request<{}, {}, ResetPasswordBody>, res: Response): Promise<void> => {
   try {
     const { token, password } = req.body;

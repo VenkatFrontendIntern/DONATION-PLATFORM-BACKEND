@@ -83,7 +83,6 @@ const campaignSchema = new Schema<ICampaign>(
       required: [true, 'End date is required'],
       validate: {
         validator: function(value: Date) {
-          // Allow end date to be at least 1 day in the future
           const tomorrow = new Date();
           tomorrow.setDate(tomorrow.getDate() + 1);
           return value >= tomorrow;
@@ -133,17 +132,9 @@ const campaignSchema = new Schema<ICampaign>(
   }
 );
 
-// Indexes for optimized query performance
-// Compound index for status filtering and createdAt sorting (most common query pattern)
 campaignSchema.index({ status: 1, createdAt: -1 });
-
-// Compound index for status + category filtering and createdAt sorting (common filtered query)
 campaignSchema.index({ status: 1, category: 1, createdAt: -1 });
-
-// Index for category filtering (used when filtering by category alone)
 campaignSchema.index({ category: 1 });
-
-// Index for organizer queries
 campaignSchema.index({ organizerId: 1 });
 
 export const Campaign = mongoose.model<ICampaign>('Campaign', campaignSchema);

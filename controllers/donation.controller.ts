@@ -34,10 +34,8 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
       return;
     }
 
-    // Create Razorpay order
     const order = await createRazorpayOrder(amount);
 
-    // Create donation record
     const donation = await Donation.create({
       campaignId,
       donorId: isAnonymous ? null : req.user._id,
@@ -73,7 +71,6 @@ interface VerifyPaymentBody {
   razorpaySignature: string;
 }
 
-// Retry utility for network failures
 const retryWithBackoff = async <T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
@@ -87,12 +84,10 @@ const retryWithBackoff = async <T>(
     } catch (error: any) {
       lastError = error;
       
-      // Don't retry on non-network errors (validation, auth, etc.)
       if (error.statusCode && error.statusCode < 500) {
         throw error;
       }
       
-      // Check if it's a network error
       const isNetworkError = 
         error.code === 'ECONNRESET' ||
         error.code === 'ETIMEDOUT' ||
@@ -130,7 +125,6 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
 
     const { donationId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
 
-    // Idempotency check: If payment is already verified, return success
     const existingDonation = await Donation.findById(donationId).session(session);
     if (!existingDonation) {
       await session.abortTransaction();
@@ -139,7 +133,6 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       return;
     }
 
-    // Check if already processed
     if (existingDonation.status === 'success' && existingDonation.razorpayPaymentId === razorpayPaymentId) {
       await session.commitTransaction();
       await session.endSession();
@@ -148,7 +141,6 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       return;
     }
 
-    // Prevent duplicate processing
     if (existingDonation.status === 'success' && existingDonation.razorpayPaymentId !== razorpayPaymentId) {
       await session.abortTransaction();
       await session.endSession();
@@ -157,7 +149,6 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       return;
     }
 
-    // Verify payment with Razorpay (with retry for network failures)
     const isValid = await retryWithBackoff(
       () => verifyRazorpayPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature),
       3,
@@ -173,17 +164,14 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       return;
     }
 
-    // Atomic transaction: Update donation and campaign together
     const certificateNumber = `80G-${uuidv4().substring(0, 8).toUpperCase()}`;
     
-    // Update donation within transaction
     existingDonation.status = 'success';
     existingDonation.razorpayPaymentId = razorpayPaymentId;
     existingDonation.razorpaySignature = razorpaySignature;
     existingDonation.certificateNumber = certificateNumber;
     await existingDonation.save({ session });
 
-    // Update campaign within transaction
     const campaign = await Campaign.findById(existingDonation.campaignId).session(session);
     if (campaign) {
       campaign.raisedAmount += existingDonation.amount;
@@ -191,21 +179,17 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       await campaign.save({ session });
     }
 
-    // Commit transaction - all database operations succeed or fail together
     await session.commitTransaction();
     await session.endSession();
 
     logger.info(`Payment ${razorpayPaymentId} verified successfully for donation ${donationId}`);
 
-    // Reload donation after transaction to get latest data
     const updatedDonation = await Donation.findById(donationId);
     if (!updatedDonation) {
       sendError(res, 'Donation not found after update', 500);
       return;
     }
 
-    // Generate and send certificate (outside transaction - non-critical operation)
-    // If this fails, payment is still successful
     try {
       const certificateBuffer = await generateCertificate(updatedDonation);
       const certificateUrl = await uploadCertificate(certificateBuffer, certificateNumber);
@@ -213,7 +197,6 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       updatedDonation.certificateSent = true;
       await updatedDonation.save();
 
-      // Send email with certificate (non-blocking)
       sendEmail({
         to: updatedDonation.donorEmail,
         subject: '80G Tax Exemption Certificate - Engala Trust',
@@ -230,18 +213,15 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       });
     } catch (certError: any) {
       logger.error('Certificate generation error (non-critical):', certError);
-      // Don't fail the request if certificate generation fails
     }
 
     sendSuccess(res, { donation: updatedDonation }, 'Payment verified successfully');
   } catch (error: any) {
-    // Rollback transaction on any error
     await session.abortTransaction();
     await session.endSession();
     
     logger.error('Verify payment error:', error);
     
-    // Check if it's a network error
     const isNetworkError = 
       error.code === 'ECONNRESET' ||
       error.code === 'ETIMEDOUT' ||
@@ -271,7 +251,6 @@ export const getCertificate = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Check if user owns the donation
     if (donation.donorId && donation.donorId.toString() !== req.user._id.toString()) {
       logger.warn(`Authorization failed: User ${req.user._id} attempted to access donation ${req.params.id} owned by ${donation.donorId}`);
       sendError(res, 'You are not authorized to access this donation certificate. Only the donor can access their own certificate.', 403);
@@ -283,8 +262,6 @@ export const getCertificate = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // In a real implementation, you would fetch the PDF from storage
-    // For now, generate it on the fly
     const certificateBuffer = await generateCertificate(donation);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="80G-Certificate-${donation.certificateNumber}.pdf"`);
@@ -331,10 +308,7 @@ export const getCampaignDonations = async (req: Request, res: Response): Promise
   }
 };
 
-// Helper function to upload certificate (placeholder - implement based on your storage)
 const uploadCertificate = async (buffer: Buffer, certificateNumber: string): Promise<string> => {
-  // This should upload to your storage (S3, Cloudinary, etc.)
-  // For now, return a placeholder
   return `certificates/${certificateNumber}.pdf`;
 };
 

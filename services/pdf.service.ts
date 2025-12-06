@@ -28,29 +28,24 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
       const margin = 40;
       const contentWidth = pageWidth - (margin * 2);
 
-      // Draw decorative border
       doc.rect(margin, margin, contentWidth, pageHeight - (margin * 2))
          .lineWidth(2)
          .strokeColor('#1a1a1a')
          .stroke();
 
-      // Inner border
       doc.rect(margin + 10, margin + 10, contentWidth - 20, pageHeight - (margin * 2) - 20)
          .lineWidth(1)
          .strokeColor('#666666')
          .stroke();
 
-      // Top decorative line
       doc.moveTo(margin + 20, margin + 50)
          .lineTo(pageWidth - margin - 20, margin + 50)
          .lineWidth(2)
          .strokeColor('#2563eb')
          .stroke();
 
-      // Header Section
       let yPosition = margin + 70;
 
-      // Organization Logo/Name Section
       doc.fontSize(28)
          .font('Helvetica-Bold')
          .fillColor('#1a1a1a')
@@ -71,7 +66,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       yPosition += 25;
 
-      // Certificate Title
       doc.fontSize(22)
          .font('Helvetica-Bold')
          .fillColor('#2563eb')
@@ -92,7 +86,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       yPosition += 50;
 
-      // Certificate Number Section
       doc.fontSize(11)
          .font('Helvetica')
          .fillColor('#666666')
@@ -105,7 +98,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       yPosition += 50;
 
-      // Main Content Box
       const boxY = yPosition;
       const boxHeight = 200;
       
@@ -114,13 +106,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
          .fill()
          .strokeColor('#e2e8f0')
          .lineWidth(1)
-         .stroke();
-
-      // Content inside box
-      let contentY = boxY + 25;
-
-      // Date
-      doc.fontSize(11)
          .font('Helvetica')
          .fillColor('#666666')
          .text('Date of Donation:', margin + 50, contentY);
@@ -136,7 +121,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       contentY += 45;
 
-      // Donor Name
       doc.fontSize(11)
          .font('Helvetica')
          .fillColor('#666666')
@@ -149,7 +133,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       contentY += 45;
 
-      // Donor Email
       doc.fontSize(11)
          .font('Helvetica')
          .fillColor('#666666')
@@ -162,7 +145,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       contentY += 45;
 
-      // Donation Amount
       doc.fontSize(11)
          .font('Helvetica')
          .fillColor('#666666')
@@ -175,7 +157,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       yPosition = boxY + boxHeight + 30;
 
-      // Declaration Section
       doc.fontSize(12)
          .font('Helvetica-Bold')
          .fillColor('#1a1a1a')
@@ -203,7 +184,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       yPosition += 60;
 
-      // Additional Information
       doc.fontSize(10)
          .font('Helvetica')
          .fillColor('#6b7280')
@@ -221,10 +201,8 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       yPosition += 50;
 
-      // Signature Section
       const signatureY = pageHeight - margin - 100;
 
-      // Signature line
       doc.moveTo(margin + 30, signatureY)
          .lineTo(margin + 200, signatureY)
          .lineWidth(1)
@@ -241,7 +219,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
          .fillColor('#1a1a1a')
          .text('ENGALA TRUST', margin + 30, signatureY + 25);
 
-      // Organization Details on right
       const orgDetailsX = pageWidth - margin - 200;
       doc.fontSize(9)
          .font('Helvetica')
@@ -257,7 +234,6 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
            width: 180,
          });
 
-      // Footer
       doc.fontSize(8)
          .font('Helvetica')
          .fillColor('#9ca3af')

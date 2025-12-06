@@ -8,19 +8,15 @@ class Logger {
   }
 
   info(message: string, ...args: any[]): void {
-    // Logging disabled
   }
 
   warn(message: string, ...args: any[]): void {
-    // Logging disabled
   }
 
   error(message: string, ...args: any[]): void {
-    // Logging disabled
   }
 
   debug(message: string, ...args: any[]): void {
-    // Logging disabled
   }
 }
 

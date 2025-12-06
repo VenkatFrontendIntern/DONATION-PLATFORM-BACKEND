@@ -11,7 +11,6 @@ const clearData = async (): Promise<void> => {
     
     await Campaign.deleteMany({});
     await Donation.deleteMany({});
-    // Keep categories and users
     
     logger.info('Data cleared successfully');
     process.exit(0);

@@ -36,7 +36,6 @@ const certificateTemplateSchema = new Schema<ICertificateTemplate>(
   }
 );
 
-// Indexes for optimized query performance
 certificateTemplateSchema.index({ isActive: 1 });
 certificateTemplateSchema.index({ uploadedBy: 1 });
 

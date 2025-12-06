@@ -3,7 +3,6 @@ import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import { Readable } from 'stream';
 
-// Configure Cloudinary
 if (config.cloudinary.cloudName && config.cloudinary.apiKey && config.cloudinary.apiSecret) {
   cloudinary.config({
     cloud_name: config.cloudinary.cloudName,
@@ -12,7 +11,6 @@ if (config.cloudinary.cloudName && config.cloudinary.apiKey && config.cloudinary
   });
 }
 
-// Upload from buffer (memory storage) - no local file system needed
 export const uploadToCloudinary = async (file: Express.Multer.File): Promise<string> => {
   try {
     if (!config.cloudinary.cloudName || !config.cloudinary.apiKey || !config.cloudinary.apiSecret) {
@@ -24,7 +22,6 @@ export const uploadToCloudinary = async (file: Express.Multer.File): Promise<str
       throw new Error('File buffer is required. Make sure multer is using memory storage.');
     }
 
-    // Upload buffer directly to Cloudinary using data URI format
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -44,7 +41,6 @@ export const uploadToCloudinary = async (file: Express.Multer.File): Promise<str
         }
       );
 
-      // Convert buffer to stream and pipe to Cloudinary
       const bufferStream = new Readable();
       bufferStream.push(file.buffer);
       bufferStream.push(null);
@@ -56,34 +52,16 @@ export const uploadToCloudinary = async (file: Express.Multer.File): Promise<str
   }
 };
 
-/**
- * Extract public ID from Cloudinary URL
- * @param url - Cloudinary URL
- * @returns Public ID without file extension, or null if URL is invalid
- */
 export const extractPublicIdFromUrl = (url: string): string | null => {
   try {
-    // Match Cloudinary URL patterns:
-    // https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{version}/{public_id}.{format}
-    // https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{public_id}.{format}
-    // https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{public_id}.{format}
-    // https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}.{format}
-    
-    // Extract everything after /image/upload/
     const uploadMatch = url.match(/\/image\/upload\/(.+)$/);
     if (!uploadMatch) return null;
     
     let pathAfterUpload = uploadMatch[1];
     
-    // Remove transformations if present (e.g., w_500,h_500/ or c_fill,w_500/)
-    // Transformations are segments that contain underscores or commas before a slash
     pathAfterUpload = pathAfterUpload.replace(/^[^/]*(?:,[^/]*)*\//, '');
-    
-    // Remove version if present (e.g., v123456/)
     pathAfterUpload = pathAfterUpload.replace(/^v\d+\//, '');
     
-    // Remove file extension to get public ID
-    // Public ID should not include the extension for deletion
     const publicId = pathAfterUpload.replace(/\.[^/.]+$/, '');
     
     return publicId || null;
@@ -101,7 +79,6 @@ export const deleteFromCloudinary = async (publicId: string): Promise<void> => {
     }
   } catch (error: any) {
     logger.error(`Cloudinary delete error for public ID ${publicId}:`, error);
-    // Don't throw - allow campaign deletion to proceed even if Cloudinary deletion fails
   }
 };
 

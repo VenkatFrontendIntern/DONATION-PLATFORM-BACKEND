@@ -59,7 +59,6 @@ const paymentVerificationSchema = new Schema<IPaymentVerification>(
   }
 );
 
-// Indexes for optimized query performance
 paymentVerificationSchema.index({ razorpayPaymentId: 1 }, { unique: true });
 paymentVerificationSchema.index({ donationId: 1 });
 paymentVerificationSchema.index({ status: 1 });

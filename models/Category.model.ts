@@ -42,7 +42,6 @@ const categorySchema = new Schema<ICategory>(
   }
 );
 
-// Auto-generate slug
 categorySchema.pre('save', function (next) {
   if (this.isModified('name')) {
     this.slug = this.name.toLowerCase().replace(/\s+/g, '-');
@@ -50,7 +49,6 @@ categorySchema.pre('save', function (next) {
   next();
 });
 
-// Indexes for optimized query performance
 categorySchema.index({ slug: 1 });
 categorySchema.index({ isActive: 1 });
 

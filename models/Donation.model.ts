@@ -34,7 +34,7 @@ const donationSchema = new Schema<IDonation>(
     donorId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      default: null, // null for anonymous donations
+      default: null,
     },
     amount: {
       type: Number,
@@ -116,7 +116,7 @@ const donationSchema = new Schema<IDonation>(
     },
     utn: {
       type: String,
-      default: null, // Unique Transaction Number for 80G
+      default: null,
     },
   },
   {
@@ -124,14 +124,12 @@ const donationSchema = new Schema<IDonation>(
   }
 );
 
-// Indexes for optimized query performance
 donationSchema.index({ campaignId: 1, createdAt: -1 });
 donationSchema.index({ donorId: 1 });
 donationSchema.index({ status: 1 });
 donationSchema.index({ donorEmail: 1 });
 donationSchema.index({ createdAt: -1 });
 donationSchema.index({ paymentMethod: 1, status: 1 });
-// certificateNumber index is automatically created by unique: true constraint
 
 export const Donation = mongoose.model<IDonation>('Donation', donationSchema);
 

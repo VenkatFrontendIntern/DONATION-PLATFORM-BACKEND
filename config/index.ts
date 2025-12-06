@@ -2,15 +2,12 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import path from 'path';
 
-// Load .env file from the project root
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-// MongoDB Connection - optimized for serverless (Vercel)
 let cachedConnection: typeof mongoose | null = null;
 
 export const connectDB = async (): Promise<void> => {
   try {
-    // Reuse existing connection if available (important for serverless)
     if (cachedConnection && mongoose.connection.readyState === 1) {
       return;
     }
@@ -21,19 +18,17 @@ export const connectDB = async (): Promise<void> => {
       throw new Error('MONGODB_URI is not defined');
     }
 
-    // Close existing connection if it exists but is not ready
     if (mongoose.connection.readyState !== 0) {
       await mongoose.connection.close();
     }
 
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     });
     
     cachedConnection = conn;
   } catch (error) {
-    // Don't exit in serverless environment - let Vercel handle it
     if (process.env.VERCEL !== '1') {
       process.exit(1);
     }
@@ -41,7 +36,6 @@ export const connectDB = async (): Promise<void> => {
   }
 };
 
-// Environment variables configuration
 export interface Config {
   port: number;
   nodeEnv: string;
