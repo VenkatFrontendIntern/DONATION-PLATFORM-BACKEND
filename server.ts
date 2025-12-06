@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { connectDB, config } from './config/index.js';
 import { apiLimiter } from './middlewares/rateLimiter.js';
 import { ensureDBConnection } from './middlewares/db.middleware.js';
@@ -23,6 +24,13 @@ if (process.env.VERCEL !== '1') {
 }
 
 const app = express();
+
+// Trust proxy for Vercel/serverless environments
+// This ensures rate limiter and other middleware see the real client IP
+app.set('trust proxy', 1);
+
+// Parse cookies
+app.use(cookieParser());
 
 const allowedOrigins = [
   config.frontendUrl || 'http://localhost:3000',

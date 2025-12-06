@@ -100,6 +100,7 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
 
       const boxY = yPosition;
       const boxHeight = 200;
+      let contentY = boxY + 20; // Initialize contentY for the content box
       
       doc.rect(margin + 30, boxY, contentWidth - 60, boxHeight)
          .fillColor('#f8fafc')
@@ -126,10 +127,15 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
          .fillColor('#666666')
          .text('Name of Donor:', margin + 50, contentY);
       
+      // Sanitize and truncate donorName to prevent layout breakage
+      const sanitizedDonorName = (donation.donorName || 'Anonymous')
+        .replace(/[^\w\s\-.,()]/g, '') // Remove special characters except common punctuation
+        .substring(0, 100); // Truncate to reasonable length
+      
       doc.fontSize(12)
          .font('Helvetica-Bold')
          .fillColor('#1a1a1a')
-         .text(donation.donorName, margin + 50, contentY + 15);
+         .text(sanitizedDonorName, margin + 50, contentY + 15);
 
       contentY += 45;
 
@@ -170,7 +176,7 @@ export const generateCertificate = async (donation: IDonation): Promise<Buffer> 
          .text(
            'This is to certify that the above-mentioned donation of ₹' + 
            donation.amount.toLocaleString('en-IN') + 
-           ' made by ' + donation.donorName + 
+           ' made by ' + sanitizedDonorName + 
            ' on ' + new Date(donation.createdAt).toLocaleDateString('en-IN') + 
            ' is eligible for deduction under Section 80G of the Income Tax Act, 1961.',
            margin + 30,

@@ -8,15 +8,23 @@ class Logger {
   }
 
   info(message: string, ...args: any[]): void {
+    const formattedMessage = this.formatMessage('info', message);
+    console.log(formattedMessage, ...args);
   }
 
   warn(message: string, ...args: any[]): void {
+    const formattedMessage = this.formatMessage('warn', message);
+    console.warn(formattedMessage, ...args);
   }
 
   error(message: string, ...args: any[]): void {
+    const formattedMessage = this.formatMessage('error', message);
+    console.error(formattedMessage, ...args);
   }
 
   debug(message: string, ...args: any[]): void {
+    const formattedMessage = this.formatMessage('debug', message);
+    console.log(formattedMessage, ...args);
   }
 }
 

@@ -4,6 +4,7 @@ import { Category } from '../models/Category.model.js';
 import { uploadToCloudinary, deleteFromCloudinary, extractPublicIdFromUrl } from '../services/cloudinary.service.js';
 import { logger } from '../utils/logger.js';
 import { sendSuccess, sendError, sendPaginated } from '../utils/apiResponse.js';
+import { escapeRegex } from '../utils/escapeRegex.js';
 
 export const getAllCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -21,9 +22,11 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
     }
 
     if (search) {
+      // Sanitize search input to prevent NoSQL injection and ReDoS attacks
+      const sanitizedSearch = escapeRegex(String(search));
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+        { title: { $regex: sanitizedSearch, $options: 'i' } },
+        { description: { $regex: sanitizedSearch, $options: 'i' } },
       ];
     }
 

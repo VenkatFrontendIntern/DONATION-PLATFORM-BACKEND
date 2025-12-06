@@ -7,6 +7,16 @@ import { sendPasswordResetEmail } from '../utils/email.js';
 import { logger } from '../utils/logger.js';
 import { sendSuccess, sendError } from '../utils/apiResponse.js';
 
+// Cookie configuration for refresh token
+const REFRESH_TOKEN_COOKIE_NAME = 'refreshToken';
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: config.nodeEnv === 'production', // Only send over HTTPS in production
+  sameSite: 'strict' as const,
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
+  path: '/api/auth',
+});
+
 interface SignupBody {
   name: string;
   email: string;
@@ -20,9 +30,7 @@ interface LoginBody {
   password: string;
 }
 
-interface RefreshTokenBody {
-  refreshToken: string;
-}
+// RefreshTokenBody is no longer needed as we read from cookies
 
 interface ForgotPasswordBody {
   email: string;
@@ -80,6 +88,9 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
     user.refreshToken = refreshToken;
     await user.save();
 
+    // Set refreshToken as httpOnly cookie
+    res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, getCookieOptions());
+
     sendSuccess(
       res,
       {
@@ -91,7 +102,6 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
           avatar: user.avatar || undefined,
         },
         token,
-        refreshToken,
       },
       'User registered successfully',
       201
@@ -156,6 +166,9 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
       logger.error('Error saving refresh token:', saveError);
     }
 
+    // Set refreshToken as httpOnly cookie
+    res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, getCookieOptions());
+
     sendSuccess(
       res,
       {
@@ -167,7 +180,6 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
           avatar: user.avatar || undefined,
         },
         token,
-        refreshToken,
       },
       'Login successful'
     );
@@ -211,9 +223,10 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export const refreshToken = async (req: Request<{}, {}, RefreshTokenBody>, res: Response): Promise<void> => {
+export const refreshToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { refreshToken } = req.body;
+    // Read refreshToken from httpOnly cookie instead of request body
+    const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
 
     if (!refreshToken) {
       sendError(res, 'Refresh token required', 401);
@@ -239,16 +252,20 @@ export const refreshToken = async (req: Request<{}, {}, RefreshTokenBody>, res: 
     user.refreshToken = newRefreshToken;
     await user.save();
 
+    // Set new refreshToken as httpOnly cookie
+    res.cookie(REFRESH_TOKEN_COOKIE_NAME, newRefreshToken, getCookieOptions());
+
     sendSuccess(
       res,
       {
         token: newToken,
-        refreshToken: newRefreshToken,
       },
       'Token refreshed successfully'
     );
   } catch (error: any) {
     logger.error('Refresh token error:', error);
+    // Clear invalid refresh token cookie
+    res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, getCookieOptions());
     sendError(res, undefined, 401, error);
   }
 };
@@ -301,6 +318,17 @@ export const resetPassword = async (req: Request<{}, {}, ResetPasswordBody>, res
     sendSuccess(res, null, 'Password reset successful');
   } catch (error: any) {
     logger.error('Reset password error:', error);
+    sendError(res, undefined, 500, error);
+  }
+};
+
+export const logout = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Clear refreshToken cookie
+    res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, getCookieOptions());
+    sendSuccess(res, null, 'Logged out successfully');
+  } catch (error: any) {
+    logger.error('Logout error:', error);
     sendError(res, undefined, 500, error);
   }
 };

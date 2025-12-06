@@ -5,6 +5,7 @@ import { User } from '../models/User.model.js';
 import { Category } from '../models/Category.model.js';
 import { logger } from '../utils/logger.js';
 import { sendSuccess, sendError, sendPaginated } from '../utils/apiResponse.js';
+import { escapeRegex } from '../utils/escapeRegex.js';
 
 export const getPendingCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -140,9 +141,11 @@ export const getAllUsers = async (req: Request, res: Response): Promise<void> =>
     const query: any = {};
 
     if (search) {
+      // Sanitize search input to prevent NoSQL injection and ReDoS attacks
+      const sanitizedSearch = escapeRegex(String(search));
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: sanitizedSearch, $options: 'i' } },
+        { email: { $regex: sanitizedSearch, $options: 'i' } },
       ];
     }
 
