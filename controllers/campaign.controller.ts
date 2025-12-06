@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Campaign, ICampaign } from '../models/Campaign.model.js';
 import { Category } from '../models/Category.model.js';
-import { uploadToCloudinary } from '../services/cloudinary.service.js';
+import { uploadToCloudinary, deleteFromCloudinary, extractPublicIdFromUrl } from '../services/cloudinary.service.js';
 import { logger } from '../utils/logger.js';
 import { sendSuccess, sendError, sendPaginated } from '../utils/apiResponse.js';
 
@@ -218,6 +218,38 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Delete images from Cloudinary before deleting the campaign
+    try {
+      // Delete cover image
+      if (campaign.coverImage) {
+        const coverImagePublicId = extractPublicIdFromUrl(campaign.coverImage);
+        if (coverImagePublicId) {
+          await deleteFromCloudinary(coverImagePublicId);
+          logger.info(`Deleted cover image from Cloudinary: ${coverImagePublicId}`);
+        } else {
+          logger.warn(`Could not extract public ID from cover image URL: ${campaign.coverImage}`);
+        }
+      }
+
+      // Delete gallery images
+      if (campaign.galleryImages && campaign.galleryImages.length > 0) {
+        for (const imageUrl of campaign.galleryImages) {
+          const galleryImagePublicId = extractPublicIdFromUrl(imageUrl);
+          if (galleryImagePublicId) {
+            await deleteFromCloudinary(galleryImagePublicId);
+            logger.info(`Deleted gallery image from Cloudinary: ${galleryImagePublicId}`);
+          } else {
+            logger.warn(`Could not extract public ID from gallery image URL: ${imageUrl}`);
+          }
+        }
+      }
+    } catch (cloudinaryError: any) {
+      // Log the error but don't fail the campaign deletion
+      // This ensures the campaign is deleted even if Cloudinary deletion fails
+      logger.error('Error deleting images from Cloudinary:', cloudinaryError);
+    }
+
+    // Delete the campaign from database
     await Campaign.findByIdAndDelete(req.params.id);
 
     sendSuccess(res, null, 'Campaign deleted successfully');

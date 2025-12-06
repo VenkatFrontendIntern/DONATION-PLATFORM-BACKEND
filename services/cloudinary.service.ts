@@ -56,13 +56,52 @@ export const uploadToCloudinary = async (file: Express.Multer.File): Promise<str
   }
 };
 
+/**
+ * Extract public ID from Cloudinary URL
+ * @param url - Cloudinary URL
+ * @returns Public ID without file extension, or null if URL is invalid
+ */
+export const extractPublicIdFromUrl = (url: string): string | null => {
+  try {
+    // Match Cloudinary URL patterns:
+    // https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{version}/{public_id}.{format}
+    // https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{public_id}.{format}
+    // https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{public_id}.{format}
+    // https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}.{format}
+    
+    // Extract everything after /image/upload/
+    const uploadMatch = url.match(/\/image\/upload\/(.+)$/);
+    if (!uploadMatch) return null;
+    
+    let pathAfterUpload = uploadMatch[1];
+    
+    // Remove transformations if present (e.g., w_500,h_500/ or c_fill,w_500/)
+    // Transformations are segments that contain underscores or commas before a slash
+    pathAfterUpload = pathAfterUpload.replace(/^[^/]*(?:,[^/]*)*\//, '');
+    
+    // Remove version if present (e.g., v123456/)
+    pathAfterUpload = pathAfterUpload.replace(/^v\d+\//, '');
+    
+    // Remove file extension to get public ID
+    // Public ID should not include the extension for deletion
+    const publicId = pathAfterUpload.replace(/\.[^/.]+$/, '');
+    
+    return publicId || null;
+  } catch (error: any) {
+    logger.error('Error extracting public ID from URL:', error);
+    return null;
+  }
+};
+
 export const deleteFromCloudinary = async (publicId: string): Promise<void> => {
   try {
     if (config.cloudinary.cloudName) {
       await cloudinary.uploader.destroy(publicId);
+      logger.info(`Successfully deleted from Cloudinary: ${publicId}`);
     }
   } catch (error: any) {
-    logger.error('Cloudinary delete error:', error);
+    logger.error(`Cloudinary delete error for public ID ${publicId}:`, error);
+    // Don't throw - allow campaign deletion to proceed even if Cloudinary deletion fails
   }
 };
 
