@@ -4,17 +4,16 @@ import {
   unsubscribeNewsletter,
   sendNewsletterToSubscribers 
 } from '../controllers/newsletter.controller.js';
-import { apiLimiter } from '../middlewares/rateLimiter.js';
 import { authenticate, authorize } from '../middlewares/auth.middleware.js';
 
 const router: Router = express.Router();
 
 // Newsletter routes (public, no auth required)
-router.post('/subscribe', apiLimiter, subscribeNewsletter);
-router.get('/unsubscribe', apiLimiter, unsubscribeNewsletter);
+router.post('/subscribe', subscribeNewsletter);
+router.get('/unsubscribe', unsubscribeNewsletter);
 
 // Admin-only routes
-router.post('/send', authenticate, authorize('admin'), apiLimiter, sendNewsletterToSubscribers);
+router.post('/send', authenticate, authorize('admin'), sendNewsletterToSubscribers);
 
 export default router;
 

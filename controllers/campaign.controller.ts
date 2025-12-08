@@ -154,27 +154,44 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      logger.warn(`Authorization failed: User ${req.user._id} attempted to update campaign ${req.params.id} owned by ${campaign.organizerId}`);
+    // Robust ownership check: ensure both IDs are converted to strings for comparison
+    const organizerIdStr = campaign.organizerId?.toString() || '';
+    const userIdStr = req.user._id?.toString() || '';
+    
+    if (organizerIdStr !== userIdStr && req.user.role !== 'admin') {
+      logger.warn(`Authorization failed: User ${userIdStr} attempted to update campaign ${req.params.id} owned by ${organizerIdStr}`);
       sendError(res, 'You are not authorized to update this campaign. Only the campaign organizer or an admin can update it.', 403);
       return;
     }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const updateData: any = { ...req.body };
+    const oldMediaUrls: string[] = [];
 
+    // If new cover image is provided, delete the old one from Cloudinary
     if (files?.image?.[0]) {
+      if (campaign.coverImage) {
+        oldMediaUrls.push(campaign.coverImage);
+      }
       updateData.coverImage = await uploadCoverImage(files.image[0]);
     }
 
-    if (files?.images) {
+    // If new gallery images are provided, replace the old ones (delete old, save new)
+    if (files?.images && files.images.length > 0) {
+      if (campaign.galleryImages && campaign.galleryImages.length > 0) {
+        oldMediaUrls.push(...campaign.galleryImages);
+      }
       const galleryImageUrls = await uploadGalleryImages(files.images);
-      updateData.galleryImages = [...(campaign.galleryImages || []), ...galleryImageUrls];
+      updateData.galleryImages = galleryImageUrls; // Replace, don't append
     }
 
-    if (files?.videos) {
+    // If new videos are provided, replace the old ones (delete old, save new)
+    if (files?.videos && files.videos.length > 0) {
+      if (campaign.videos && campaign.videos.length > 0) {
+        oldMediaUrls.push(...campaign.videos);
+      }
       const videoUrls = await uploadVideos(files.videos);
-      updateData.videos = [...(campaign.videos || []), ...videoUrls];
+      updateData.videos = videoUrls; // Replace, don't append
     }
 
     if (updateData.goalAmount) {
@@ -185,6 +202,15 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
       new: true,
       runValidators: true,
     });
+
+    // Delete old media files from Cloudinary after successful update
+    // This saves storage space and prevents orphaned files
+    if (oldMediaUrls.length > 0) {
+      deleteMediaFiles(oldMediaUrls).catch((cloudinaryError: any) => {
+        logger.error('Error deleting old media from Cloudinary (non-critical):', cloudinaryError);
+        // Non-critical: don't fail the request if deletion fails
+      });
+    }
 
     sendSuccess(res, { campaign: updatedCampaign }, 'Campaign updated successfully');
   } catch (error: any) {
@@ -207,8 +233,12 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    if (campaign.organizerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      logger.warn(`Authorization failed: User ${req.user._id} attempted to delete campaign ${req.params.id} owned by ${campaign.organizerId}`);
+    // Robust ownership check: ensure both IDs are converted to strings for comparison
+    const organizerIdStr = campaign.organizerId?.toString() || '';
+    const userIdStr = req.user._id?.toString() || '';
+    
+    if (organizerIdStr !== userIdStr && req.user.role !== 'admin') {
+      logger.warn(`Authorization failed: User ${userIdStr} attempted to delete campaign ${req.params.id} owned by ${organizerIdStr}`);
       sendError(res, 'You are not authorized to delete this campaign. Only the campaign organizer or an admin can delete it.', 403);
       return;
     }

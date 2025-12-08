@@ -76,38 +76,73 @@ interface VerifyPaymentBody {
 
 
 export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res: Response): Promise<void> => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  let session: mongoose.ClientSession | null = null;
+  let useTransaction = true;
 
   try {
+    // Attempt to start a transaction session
+    // Some MongoDB instances (standalone) don't support transactions
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    } catch (transactionError: any) {
+      // Check if transaction is not supported (error code 20 or message contains "transaction")
+      const isTransactionNotSupported = 
+        transactionError.code === 20 ||
+        transactionError.message?.toLowerCase().includes('transaction') ||
+        transactionError.message?.toLowerCase().includes('standalone');
+      
+      if (isTransactionNotSupported) {
+        logger.warn('MongoDB transactions not supported, falling back to non-transactional mode:', transactionError.message);
+        useTransaction = false;
+        if (session) {
+          await session.endSession();
+          session = null;
+        }
+      } else {
+        throw transactionError;
+      }
+    }
+
     if (!req.user) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       sendError(res, 'Authentication required', 401);
       return;
     }
 
     const { donationId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
 
-    const existingDonation = await Donation.findById(donationId).session(session);
+    const existingDonation = useTransaction && session
+      ? await Donation.findById(donationId).session(session)
+      : await Donation.findById(donationId);
+      
     if (!existingDonation) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       sendError(res, 'Donation not found', 404);
       return;
     }
 
     if (existingDonation.status === 'success' && existingDonation.razorpayPaymentId === razorpayPaymentId) {
-      await session.commitTransaction();
-      await session.endSession();
+      if (session) {
+        await session.commitTransaction();
+        await session.endSession();
+      }
       logger.info(`Payment ${razorpayPaymentId} already verified for donation ${donationId}`);
       sendSuccess(res, { donation: existingDonation }, 'Payment already verified');
       return;
     }
 
     if (existingDonation.status === 'success' && existingDonation.razorpayPaymentId !== razorpayPaymentId) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       logger.warn(`Donation ${donationId} already has a different successful payment`);
       sendError(res, 'Donation already has a successful payment', 400);
       return;
@@ -122,14 +157,18 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
     );
 
     if (!verificationResult.isValid) {
-      await session.commitTransaction();
-      await session.endSession();
+      if (session) {
+        await session.commitTransaction();
+        await session.endSession();
+      }
       sendError(res, verificationResult.error || 'Payment verification failed', 400);
       return;
     }
 
-    await session.commitTransaction();
-    await session.endSession();
+    if (session) {
+      await session.commitTransaction();
+      await session.endSession();
+    }
 
     logger.info(`Payment ${razorpayPaymentId} verified successfully for donation ${donationId}`);
 
@@ -145,8 +184,14 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
 
     sendSuccess(res, { donation: updatedDonation }, 'Payment verified successfully');
   } catch (error: any) {
-    await session.abortTransaction();
-    await session.endSession();
+    if (session) {
+      try {
+        await session.abortTransaction();
+      } catch (abortError) {
+        // Ignore abort errors if transaction wasn't started
+      }
+      await session.endSession();
+    }
     
     logger.error('Verify payment error:', error);
     

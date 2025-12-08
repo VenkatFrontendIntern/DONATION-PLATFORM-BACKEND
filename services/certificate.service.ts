@@ -4,13 +4,24 @@ import { sendEmail } from '../utils/email.js';
 import { generateCertificateEmailTemplate } from '../utils/certificateEmailTemplate.js';
 import { logger } from '../utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
+import { uploadBufferToCloudinary } from './cloudinary.service.js';
 
 /**
- * Upload certificate to storage (currently returns local path)
- * In production, this should upload to cloud storage
+ * Upload certificate buffer to Cloudinary and return the secure URL
+ * This replaces the local file path approach which doesn't work on serverless platforms like Vercel
  */
 const uploadCertificate = async (buffer: Buffer, certificateNumber: string): Promise<string> => {
-  return `certificates/${certificateNumber}.pdf`;
+  try {
+    const certificateUrl = await uploadBufferToCloudinary(
+      buffer,
+      'donation-platform/certificates',
+      certificateNumber
+    );
+    return certificateUrl;
+  } catch (error: any) {
+    logger.error('Failed to upload certificate to Cloudinary:', error);
+    throw new Error('Failed to upload certificate to cloud storage');
+  }
 };
 
 /**

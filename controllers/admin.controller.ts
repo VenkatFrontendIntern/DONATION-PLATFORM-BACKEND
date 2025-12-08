@@ -136,76 +136,83 @@ export const getStats = async (req: Request, res: Response): Promise<void> => {
 };
 
 /**
- * Get donation trends for the last 6 months
+ * Get payment method analytics - shows distribution of payment methods and their success rates
  */
-export const getDonationTrends = async (req: Request, res: Response): Promise<void> => {
+export const getPaymentMethodAnalytics = async (req: Request, res: Response): Promise<void> => {
   try {
-    const now = new Date();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(now.getMonth() - 6);
-    sixMonthsAgo.setDate(1); // Start of the month
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-
-    // Generate array of last 6 months
-    const months: Array<{ year: number; month: number; label: string }> = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      date.setDate(1);
-      date.setHours(0, 0, 0, 0);
-      
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      months.push({
-        year: date.getFullYear(),
-        month: date.getMonth(),
-        label: monthNames[date.getMonth()],
-      });
-    }
-
-    // Get donation data grouped by month
-    const donationTrends = await Donation.aggregate([
-      {
-        $match: {
-          status: 'success',
-          createdAt: { $gte: sixMonthsAgo },
-        },
-      },
+    // Get payment method distribution
+    const paymentMethodStats = await Donation.aggregate([
       {
         $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' },
-          },
+          _id: '$paymentMethod',
           totalAmount: { $sum: '$amount' },
-          donationCount: { $sum: 1 },
+          totalCount: { $sum: 1 },
+          successCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'success'] }, 1, 0] }
+          },
+          failedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
+          },
+          pendingCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+          },
+          successAmount: {
+            $sum: { $cond: [{ $eq: ['$status', 'success'] }, '$amount', 0] }
+          },
         },
       },
       {
-        $sort: { '_id.year': 1, '_id.month': 1 },
+        $sort: { totalAmount: -1 },
       },
     ]);
 
-    // Map the aggregated data to months array
-    const trendsData = months.map((monthInfo) => {
-      const trend = donationTrends.find(
-        (t) => t._id.year === monthInfo.year && t._id.month === monthInfo.month + 1 // MongoDB month is 1-indexed
-      );
+    // Get donation status breakdown
+    const statusBreakdown = await Donation.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    // Calculate success rates
+    const analytics = paymentMethodStats.map((method) => {
+      const total = method.totalCount;
+      const successRate = total > 0 ? ((method.successCount / total) * 100).toFixed(1) : '0';
+      
       return {
-        month: monthInfo.label,
-        amount: trend?.totalAmount || 0,
-        donations: trend?.donationCount || 0,
+        method: method._id || 'unknown',
+        totalAmount: method.totalAmount || 0,
+        totalCount: method.totalCount || 0,
+        successCount: method.successCount || 0,
+        failedCount: method.failedCount || 0,
+        pendingCount: method.pendingCount || 0,
+        successAmount: method.successAmount || 0,
+        successRate: parseFloat(successRate),
       };
     });
+
+    // Format status breakdown
+    const statusData = statusBreakdown.reduce((acc, status) => {
+      acc[status._id] = {
+        count: status.count,
+        amount: status.totalAmount,
+      };
+      return acc;
+    }, {} as Record<string, { count: number; amount: number }>);
 
     sendSuccess(
       res,
       {
-        trends: trendsData,
+        paymentMethods: analytics,
+        statusBreakdown: statusData,
       },
-      'Donation trends retrieved successfully'
+      'Payment method analytics retrieved successfully'
     );
   } catch (error: any) {
-    logger.error('Get donation trends error:', error);
+    logger.error('Get payment method analytics error:', error);
     sendError(res, 'Server error', 500, error);
   }
 };

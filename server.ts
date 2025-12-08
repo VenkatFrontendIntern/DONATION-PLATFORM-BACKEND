@@ -2,7 +2,6 @@ import express, { Request, Response, NextFunction, ErrorRequestHandler } from 'e
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { connectDB, config } from './config/index.js';
-import { apiLimiter } from './middlewares/rateLimiter.js';
 import { ensureDBConnection } from './middlewares/db.middleware.js';
 import { logger } from './utils/logger.js';
 import { initializeAdmin } from './utils/initAdmin.js';
@@ -27,7 +26,6 @@ if (process.env.VERCEL !== '1') {
 const app = express();
 
 // Trust proxy for Vercel/serverless environments
-// This ensures rate limiter and other middleware see the real client IP
 app.set('trust proxy', 1);
 
 // Parse cookies
@@ -72,8 +70,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use('/uploads', express.static('uploads'));
-
-app.use('/api/', apiLimiter);
 
 app.use('/api/', ensureDBConnection);
 

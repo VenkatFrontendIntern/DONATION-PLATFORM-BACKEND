@@ -4,7 +4,7 @@ import {
   approveCampaign,
   rejectCampaign,
   getStats,
-  getDonationTrends,
+  getPaymentMethodAnalytics,
   getAllUsers,
   getAllDonations,
   createCategory,
@@ -27,7 +27,7 @@ router.get('/campaigns', getPendingCampaigns);
 router.put('/campaign/:id/approve', approveCampaign);
 router.put('/campaign/:id/reject', rejectCampaign);
 router.get('/stats', getStats);
-router.get('/donation-trends', getDonationTrends);
+router.get('/payment-analytics', getPaymentMethodAnalytics);
 router.get('/users', getAllUsers);
 router.get('/donations', getAllDonations);
 router.post('/categories', createCategory);

@@ -13,7 +13,7 @@ export const processSuccessfulPayment = async (
   donation: IDonation,
   razorpayPaymentId: string,
   razorpaySignature: string,
-  session: mongoose.ClientSession
+  session: mongoose.ClientSession | null
 ): Promise<void> => {
   const certificateNumber = `80G-${uuidv4().substring(0, 8).toUpperCase()}`;
   
@@ -21,13 +21,26 @@ export const processSuccessfulPayment = async (
   donation.razorpayPaymentId = razorpayPaymentId;
   donation.razorpaySignature = razorpaySignature;
   donation.certificateNumber = certificateNumber;
-  await donation.save({ session });
+  
+  if (session) {
+    await donation.save({ session });
+  } else {
+    await donation.save();
+  }
 
-  const campaign = await Campaign.findById(donation.campaignId).session(session);
+  const campaign = session
+    ? await Campaign.findById(donation.campaignId).session(session)
+    : await Campaign.findById(donation.campaignId);
+    
   if (campaign) {
     campaign.raisedAmount += donation.amount;
     campaign.donorCount += 1;
-    await campaign.save({ session });
+    
+    if (session) {
+      await campaign.save({ session });
+    } else {
+      await campaign.save();
+    }
   }
 };
 
@@ -39,7 +52,7 @@ export const verifyAndProcessPayment = async (
   razorpayOrderId: string,
   razorpayPaymentId: string,
   razorpaySignature: string,
-  session: mongoose.ClientSession
+  session: mongoose.ClientSession | null
 ): Promise<{ isValid: boolean; error?: string }> => {
   const isValidSignature = await verifyPaymentSignature(
     razorpayOrderId,
@@ -49,7 +62,11 @@ export const verifyAndProcessPayment = async (
 
   if (!isValidSignature) {
     donation.status = 'failed';
-    await donation.save({ session });
+    if (session) {
+      await donation.save({ session });
+    } else {
+      await donation.save();
+    }
     return { isValid: false, error: 'Payment verification failed' };
   }
 
@@ -62,7 +79,11 @@ export const verifyAndProcessPayment = async (
   if (!isValidAmount) {
     logger.warn(`Amount mismatch for donation ${donation._id}. Expected: ${donation.amount}`);
     donation.status = 'failed';
-    await donation.save({ session });
+    if (session) {
+      await donation.save({ session });
+    } else {
+      await donation.save();
+    }
     return { isValid: false, error: 'Payment amount mismatch' };
   }
 

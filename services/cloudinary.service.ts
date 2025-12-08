@@ -101,3 +101,50 @@ export const deleteFromCloudinary = async (publicId: string, resourceType: 'imag
   }
 };
 
+/**
+ * Upload a raw buffer (e.g., PDF) to Cloudinary
+ * This is used for certificate uploads that are generated in memory
+ */
+export const uploadBufferToCloudinary = async (
+  buffer: Buffer,
+  folder: string,
+  filename: string
+): Promise<string> => {
+  try {
+    if (!config.cloudinary.cloudName || !config.cloudinary.apiKey || !config.cloudinary.apiSecret) {
+      logger.error('Cloudinary not configured! Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET');
+      throw new Error('Cloudinary not configured');
+    }
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type: 'raw', // Use 'raw' for PDFs and other non-image files
+          public_id: filename.replace(/\.pdf$/i, ''), // Remove .pdf extension as Cloudinary handles it
+          format: 'pdf',
+        },
+        (error, result) => {
+          if (error) {
+            logger.error('Cloudinary buffer upload error:', error);
+            reject(error);
+          } else if (result) {
+            logger.info(`Successfully uploaded buffer to Cloudinary: ${result.secure_url}`);
+            resolve(result.secure_url);
+          } else {
+            reject(new Error('Upload failed: No result from Cloudinary'));
+          }
+        }
+      );
+
+      const bufferStream = new Readable();
+      bufferStream.push(buffer);
+      bufferStream.push(null);
+      bufferStream.pipe(uploadStream);
+    });
+  } catch (error: any) {
+    logger.error('Cloudinary buffer upload error:', error);
+    throw error;
+  }
+};
+
