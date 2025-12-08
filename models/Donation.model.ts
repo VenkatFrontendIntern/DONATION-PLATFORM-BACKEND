@@ -130,6 +130,7 @@ donationSchema.index({ status: 1 });
 donationSchema.index({ donorEmail: 1 });
 donationSchema.index({ createdAt: -1 });
 donationSchema.index({ paymentMethod: 1, status: 1 });
+donationSchema.index({ razorpayPaymentId: 1 }, { unique: true, sparse: true });
 
 export const Donation = mongoose.model<IDonation>('Donation', donationSchema);
 

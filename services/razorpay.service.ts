@@ -51,3 +51,48 @@ export const verifyRazorpayPayment = async (
   return expectedSignature === razorpaySignature;
 };
 
+export const verifyRazorpayWebhookSignature = (
+  webhookBody: string,
+  webhookSignature: string
+): boolean => {
+  if (!config.razorpayKeySecret) {
+    logger.error('Razorpay key secret not configured');
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', config.razorpayKeySecret)
+    .update(webhookBody)
+    .digest('hex');
+
+  return expectedSignature === webhookSignature;
+};
+
+export const fetchPaymentDetails = async (razorpayPaymentId: string): Promise<any> => {
+  if (!razorpayInstance) {
+    throw new Error('Razorpay not configured');
+  }
+
+  try {
+    const payment = await razorpayInstance.payments.fetch(razorpayPaymentId);
+    return payment;
+  } catch (error: any) {
+    logger.error('Razorpay payment fetch error:', error);
+    throw error;
+  }
+};
+
+export const fetchOrderDetails = async (razorpayOrderId: string): Promise<any> => {
+  if (!razorpayInstance) {
+    throw new Error('Razorpay not configured');
+  }
+
+  try {
+    const order = await razorpayInstance.orders.fetch(razorpayOrderId);
+    return order;
+  } catch (error: any) {
+    logger.error('Razorpay order fetch error:', error);
+    throw error;
+  }
+};
+

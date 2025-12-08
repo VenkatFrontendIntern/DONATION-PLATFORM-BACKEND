@@ -1,21 +1,17 @@
 import { Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { User, IUser } from '../models/User.model.js';
+import { User } from '../models/User.model.js';
 import { config } from '../config/index.js';
 import { sendPasswordResetEmail } from '../utils/email.js';
 import { logger } from '../utils/logger.js';
 import { sendSuccess, sendError } from '../utils/apiResponse.js';
-
-// Cookie configuration for refresh token
-const REFRESH_TOKEN_COOKIE_NAME = 'refreshToken';
-const getCookieOptions = () => ({
-  httpOnly: true,
-  secure: config.nodeEnv === 'production', // Only send over HTTPS in production
-  sameSite: 'strict' as const,
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
-  path: '/api/auth',
-});
+import {
+  generateToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+  REFRESH_TOKEN_COOKIE_NAME,
+  getCookieOptions,
+} from '../utils/tokenUtils.js';
 
 interface SignupBody {
   name: string;
@@ -30,8 +26,6 @@ interface LoginBody {
   password: string;
 }
 
-// RefreshTokenBody is no longer needed as we read from cookies
-
 interface ForgotPasswordBody {
   email: string;
 }
@@ -40,29 +34,6 @@ interface ResetPasswordBody {
   token: string;
   password: string;
 }
-
-interface JwtPayload {
-  id: string;
-}
-
-// Generate JWT Token
-const generateToken = (id: string): string => {
-  if (!config.jwtSecret) {
-    throw new Error('JWT secret not configured');
-  }
-  return jwt.sign({ id }, config.jwtSecret, {
-    expiresIn: config.jwtExpire,
-  } as jwt.SignOptions);
-};
-
-const generateRefreshToken = (id: string): string => {
-  if (!config.jwtRefreshSecret) {
-    throw new Error('JWT refresh secret not configured');
-  }
-  return jwt.sign({ id }, config.jwtRefreshSecret, {
-    expiresIn: config.jwtRefreshExpire,
-  } as jwt.SignOptions);
-};
 
 export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): Promise<void> => {
   try {
@@ -88,7 +59,6 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
     user.refreshToken = refreshToken;
     await user.save();
 
-    // Set refreshToken as httpOnly cookie
     res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, getCookieOptions());
 
     sendSuccess(
@@ -166,7 +136,6 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
       logger.error('Error saving refresh token:', saveError);
     }
 
-    // Set refreshToken as httpOnly cookie
     res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, getCookieOptions());
 
     sendSuccess(
@@ -225,23 +194,17 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 
 export const refreshToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Read refreshToken from httpOnly cookie instead of request body
-    const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
+    const refreshTokenValue = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
 
-    if (!refreshToken) {
+    if (!refreshTokenValue) {
       sendError(res, 'Refresh token required', 401);
       return;
     }
 
-    if (!config.jwtRefreshSecret) {
-      sendError(res, 'JWT refresh secret not configured', 500);
-      return;
-    }
-
-    const decoded = jwt.verify(refreshToken, config.jwtRefreshSecret) as JwtPayload;
+    const decoded = verifyRefreshToken(refreshTokenValue);
     const user = await User.findById(decoded.id);
 
-    if (!user || user.refreshToken !== refreshToken) {
+    if (!user || user.refreshToken !== refreshTokenValue) {
       sendError(res, 'Invalid refresh token', 401);
       return;
     }
@@ -252,7 +215,6 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     user.refreshToken = newRefreshToken;
     await user.save();
 
-    // Set new refreshToken as httpOnly cookie
     res.cookie(REFRESH_TOKEN_COOKIE_NAME, newRefreshToken, getCookieOptions());
 
     sendSuccess(
@@ -264,7 +226,6 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     );
   } catch (error: any) {
     logger.error('Refresh token error:', error);
-    // Clear invalid refresh token cookie
     res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, getCookieOptions());
     sendError(res, undefined, 401, error);
   }
@@ -324,7 +285,6 @@ export const resetPassword = async (req: Request<{}, {}, ResetPasswordBody>, res
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Clear refreshToken cookie
     res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, getCookieOptions());
     sendSuccess(res, null, 'Logged out successfully');
   } catch (error: any) {

@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { Donation, IDonation } from '../models/Donation.model.js';
+import { Donation } from '../models/Donation.model.js';
 import { Campaign } from '../models/Campaign.model.js';
-import { createRazorpayOrder, verifyRazorpayPayment } from '../services/razorpay.service.js';
+import { 
+  createRazorpayOrder, 
+  verifyRazorpayWebhookSignature,
+} from '../services/razorpay.service.js';
 import { generateCertificate } from '../services/pdf.service.js';
-import { sendEmail } from '../utils/email.js';
 import { logger } from '../utils/logger.js';
-import { v4 as uuidv4 } from 'uuid';
 import { sendSuccess, sendError } from '../utils/apiResponse.js';
+import { verifyAndProcessPayment, handlePostPaymentSuccess } from '../services/donationProcessing.service.js';
+import { processPaymentCapturedWebhook } from '../services/webhook.service.js';
 
 interface CreateOrderBody {
   campaignId: string;
@@ -71,45 +74,6 @@ interface VerifyPaymentBody {
   razorpaySignature: string;
 }
 
-const retryWithBackoff = async <T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
-): Promise<T> => {
-  let lastError: any;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      lastError = error;
-      
-      if (error.statusCode && error.statusCode < 500) {
-        throw error;
-      }
-      
-      const isNetworkError = 
-        error.code === 'ECONNRESET' ||
-        error.code === 'ETIMEDOUT' ||
-        error.code === 'ENOTFOUND' ||
-        error.message?.includes('network') ||
-        error.message?.includes('timeout') ||
-        error.message?.includes('ECONNREFUSED');
-      
-      if (!isNetworkError && attempt < maxRetries - 1) {
-        throw error; // Not a network error, don't retry
-      }
-      
-      if (attempt < maxRetries - 1) {
-        const delay = baseDelay * Math.pow(2, attempt);
-        logger.warn(`Network error on attempt ${attempt + 1}, retrying in ${delay}ms...`, error.message);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-  
-  throw lastError;
-};
 
 export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res: Response): Promise<void> => {
   const session = await mongoose.startSession();
@@ -149,34 +113,19 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       return;
     }
 
-    const isValid = await retryWithBackoff(
-      () => verifyRazorpayPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature),
-      3,
-      1000
+    const verificationResult = await verifyAndProcessPayment(
+      existingDonation,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      session
     );
 
-    if (!isValid) {
-      existingDonation.status = 'failed';
-      await existingDonation.save({ session });
+    if (!verificationResult.isValid) {
       await session.commitTransaction();
       await session.endSession();
-      sendError(res, 'Payment verification failed', 400);
+      sendError(res, verificationResult.error || 'Payment verification failed', 400);
       return;
-    }
-
-    const certificateNumber = `80G-${uuidv4().substring(0, 8).toUpperCase()}`;
-    
-    existingDonation.status = 'success';
-    existingDonation.razorpayPaymentId = razorpayPaymentId;
-    existingDonation.razorpaySignature = razorpaySignature;
-    existingDonation.certificateNumber = certificateNumber;
-    await existingDonation.save({ session });
-
-    const campaign = await Campaign.findById(existingDonation.campaignId).session(session);
-    if (campaign) {
-      campaign.raisedAmount += existingDonation.amount;
-      campaign.donorCount += 1;
-      await campaign.save({ session });
     }
 
     await session.commitTransaction();
@@ -184,35 +133,14 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
 
     logger.info(`Payment ${razorpayPaymentId} verified successfully for donation ${donationId}`);
 
+    handlePostPaymentSuccess(donationId).catch((error: any) => {
+      logger.error('Post-payment processing error (non-critical):', error);
+    });
+
     const updatedDonation = await Donation.findById(donationId);
     if (!updatedDonation) {
       sendError(res, 'Donation not found after update', 500);
       return;
-    }
-
-    try {
-      const certificateBuffer = await generateCertificate(updatedDonation);
-      const certificateUrl = await uploadCertificate(certificateBuffer, certificateNumber);
-      updatedDonation.certificateUrl = certificateUrl;
-      updatedDonation.certificateSent = true;
-      await updatedDonation.save();
-
-      sendEmail({
-        to: updatedDonation.donorEmail,
-        subject: '80G Tax Exemption Certificate - Engala Trust',
-        html: `
-          <div style="font-family: Arial, sans-serif;">
-            <h2>Thank you for your donation!</h2>
-            <p>Your 80G tax exemption certificate is attached.</p>
-            <p>Certificate Number: ${certificateNumber}</p>
-            <p>Donation Amount: ₹${updatedDonation.amount.toLocaleString('en-IN')}</p>
-          </div>
-        `,
-      }).catch((emailError: any) => {
-        logger.error('Email sending failed (non-critical):', emailError);
-      });
-    } catch (certError: any) {
-      logger.error('Certificate generation error (non-critical):', certError);
     }
 
     sendSuccess(res, { donation: updatedDonation }, 'Payment verified successfully');
@@ -307,8 +235,46 @@ export const getCampaignDonations = async (req: Request, res: Response): Promise
     sendError(res, undefined, 500, error);
   }
 };
+export const handleRazorpayWebhook = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const webhookSignature = req.headers['x-razorpay-signature'] as string;
+    const webhookBody = JSON.stringify(req.body);
 
-const uploadCertificate = async (buffer: Buffer, certificateNumber: string): Promise<string> => {
-  return `certificates/${certificateNumber}.pdf`;
+    if (!webhookSignature) {
+      logger.warn('Webhook request missing signature');
+      sendError(res, 'Missing signature', 400);
+      return;
+    }
+
+    const isValidSignature = verifyRazorpayWebhookSignature(webhookBody, webhookSignature);
+    if (!isValidSignature) {
+      logger.warn('Invalid webhook signature');
+      sendError(res, 'Invalid signature', 401);
+      return;
+    }
+
+    const event = req.body;
+    logger.info(`Received Razorpay webhook event: ${event.event}`);
+
+    if (event.event === 'payment.captured') {
+      const payment = event.payload.payment.entity;
+      const orderId = payment.order_id;
+
+      const result = await processPaymentCapturedWebhook(payment, orderId);
+      
+      if (result.success) {
+        sendSuccess(res, { message: result.message }, 'Payment verified');
+      } else {
+        sendError(res, result.message, 400);
+      }
+      return;
+    } else {
+      logger.info(`Unhandled webhook event: ${event.event}`);
+      sendSuccess(res, { message: 'Event received' }, 'Webhook received');
+    }
+  } catch (error: any) {
+    logger.error('Webhook handler error:', error);
+    sendError(res, undefined, 500, error);
+  }
 };
 

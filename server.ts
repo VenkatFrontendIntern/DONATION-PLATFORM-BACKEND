@@ -14,6 +14,7 @@ import donationRoutes from './routes/donation.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import upiRoutes from './routes/upi.routes.js';
 import statsRoutes from './routes/stats.routes.js';
+import newsletterRoutes from './routes/newsletter.routes.js';
 
 if (process.env.VERCEL !== '1') {
   connectDB().then(() => {
@@ -82,6 +83,7 @@ app.use('/api/donation', donationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upi', upiRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });

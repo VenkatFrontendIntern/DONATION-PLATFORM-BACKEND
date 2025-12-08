@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
-import { Campaign, ICampaign } from '../models/Campaign.model.js';
+import { Campaign } from '../models/Campaign.model.js';
 import { Category } from '../models/Category.model.js';
-import { uploadToCloudinary, deleteFromCloudinary, extractPublicIdFromUrl } from '../services/cloudinary.service.js';
+import { extractPublicIdFromUrl, deleteFromCloudinary } from '../services/cloudinary.service.js';
 import { logger } from '../utils/logger.js';
 import { sendSuccess, sendError, sendPaginated } from '../utils/apiResponse.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import { uploadCoverImage, uploadGalleryImages, uploadVideos, deleteMediaFiles } from '../services/campaignMedia.service.js';
 
 export const getAllCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -14,7 +15,7 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
     if (status) {
       query.status = status;
     } else {
-      query.status = 'approved'; // Only show approved campaigns by default
+      query.status = 'approved';
     }
 
     if (category) {
@@ -22,7 +23,6 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
     }
 
     if (search) {
-      // Sanitize search input to prevent NoSQL injection and ReDoS attacks
       const sanitizedSearch = escapeRegex(String(search));
       query.$or = [
         { title: { $regex: sanitizedSearch, $options: 'i' } },
@@ -31,7 +31,7 @@ export const getAllCampaigns = async (req: Request, res: Response): Promise<void
     }
 
     const pageNum = Math.max(1, Number(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, Number(limit) || 10)); // Max 100, min 1
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 10));
 
     const campaigns = await Campaign.find(query)
       .select('title description organizer goalAmount raisedAmount category coverImage status endDate donorCount createdAt')
@@ -93,19 +93,16 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const coverImageFile = files?.image?.[0];
     const galleryFiles = files?.images || [];
+    const videoFiles = files?.videos || [];
 
     if (!coverImageFile) {
       sendError(res, 'Cover image is required', 400);
       return;
     }
 
-    const coverImageUrl = await uploadToCloudinary(coverImageFile);
-
-    const galleryImageUrls: string[] = [];
-    for (const file of galleryFiles) {
-      const url = await uploadToCloudinary(file);
-      galleryImageUrls.push(url);
-    }
+    const coverImageUrl = await uploadCoverImage(coverImageFile);
+    const galleryImageUrls = await uploadGalleryImages(galleryFiles);
+    const videoUrls = await uploadVideos(videoFiles);
 
     const campaignData: any = {
       title: req.body.title,
@@ -116,6 +113,7 @@ export const createCampaign = async (req: Request, res: Response): Promise<void>
       category: req.body.category,
       coverImage: coverImageUrl,
       galleryImages: galleryImageUrls,
+      videos: videoUrls,
       endDate: req.body.endDate,
       status: 'pending',
     };
@@ -166,16 +164,17 @@ export const updateCampaign = async (req: Request, res: Response): Promise<void>
     const updateData: any = { ...req.body };
 
     if (files?.image?.[0]) {
-      updateData.coverImage = await uploadToCloudinary(files.image[0]);
+      updateData.coverImage = await uploadCoverImage(files.image[0]);
     }
 
     if (files?.images) {
-      const galleryImageUrls: string[] = [];
-      for (const file of files.images) {
-        const url = await uploadToCloudinary(file);
-        galleryImageUrls.push(url);
-      }
+      const galleryImageUrls = await uploadGalleryImages(files.images);
       updateData.galleryImages = [...(campaign.galleryImages || []), ...galleryImageUrls];
+    }
+
+    if (files?.videos) {
+      const videoUrls = await uploadVideos(files.videos);
+      updateData.videos = [...(campaign.videos || []), ...videoUrls];
     }
 
     if (updateData.goalAmount) {
@@ -215,29 +214,16 @@ export const deleteCampaign = async (req: Request, res: Response): Promise<void>
     }
 
     try {
-      if (campaign.coverImage) {
-        const coverImagePublicId = extractPublicIdFromUrl(campaign.coverImage);
-        if (coverImagePublicId) {
-          await deleteFromCloudinary(coverImagePublicId);
-          logger.info(`Deleted cover image from Cloudinary: ${coverImagePublicId}`);
-        } else {
-          logger.warn(`Could not extract public ID from cover image URL: ${campaign.coverImage}`);
-        }
-      }
-
-      if (campaign.galleryImages && campaign.galleryImages.length > 0) {
-        for (const imageUrl of campaign.galleryImages) {
-          const galleryImagePublicId = extractPublicIdFromUrl(imageUrl);
-          if (galleryImagePublicId) {
-            await deleteFromCloudinary(galleryImagePublicId);
-            logger.info(`Deleted gallery image from Cloudinary: ${galleryImagePublicId}`);
-          } else {
-            logger.warn(`Could not extract public ID from gallery image URL: ${imageUrl}`);
-          }
-        }
+      const mediaUrls: string[] = [];
+      if (campaign.coverImage) mediaUrls.push(campaign.coverImage);
+      if (campaign.galleryImages) mediaUrls.push(...campaign.galleryImages);
+      if (campaign.videos) mediaUrls.push(...campaign.videos);
+      
+      if (mediaUrls.length > 0) {
+        await deleteMediaFiles(mediaUrls);
       }
     } catch (cloudinaryError: any) {
-      logger.error('Error deleting images from Cloudinary:', cloudinaryError);
+      logger.error('Error deleting media from Cloudinary:', cloudinaryError);
     }
 
     await Campaign.findByIdAndDelete(req.params.id);

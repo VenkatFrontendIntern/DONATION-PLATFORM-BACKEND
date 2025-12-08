@@ -10,6 +10,7 @@ export interface ICampaign extends Document {
   category: Types.ObjectId;
   coverImage: string;
   galleryImages: string[];
+  videos: string[];
   status: 'pending' | 'approved' | 'rejected' | 'closed';
   endDate: Date;
   donorCount: number;
@@ -71,6 +72,9 @@ const campaignSchema = new Schema<ICampaign>(
       required: [true, 'Cover image is required'],
     },
     galleryImages: [{
+      type: String,
+    }],
+    videos: [{
       type: String,
     }],
     status: {
