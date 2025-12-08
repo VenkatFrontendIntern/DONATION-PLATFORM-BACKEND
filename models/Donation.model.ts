@@ -57,7 +57,8 @@ const donationSchema = new Schema<IDonation>(
     },
     razorpayPaymentId: {
       type: String,
-      default: null,
+      // No default - field will be omitted if not set, preventing sparse index issues with null
+      sparse: true,
     },
     razorpaySignature: {
       type: String,

@@ -14,7 +14,12 @@ if (config.razorpayKeyId && config.razorpayKeySecret) {
 
 export const createRazorpayOrder = async (amount: number): Promise<any> => {
   if (!razorpayInstance) {
-    throw new Error('Razorpay not configured');
+    logger.error('Razorpay instance not initialized. Check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.');
+    throw new Error('Payment gateway is not configured. Please contact support.');
+  }
+
+  if (!amount || amount <= 0) {
+    throw new Error('Invalid amount for order creation');
   }
 
   const options = {
@@ -25,10 +30,27 @@ export const createRazorpayOrder = async (amount: number): Promise<any> => {
 
   try {
     const order = await razorpayInstance.orders.create(options);
+    logger.info(`Razorpay order created: ${order.id} for amount ${amount}`);
     return order;
   } catch (error: any) {
-    logger.error('Razorpay order creation error:', error);
-    throw error;
+    logger.error('Razorpay order creation error:', {
+      message: error.message,
+      description: error.description,
+      field: error.field,
+      source: error.source,
+      step: error.step,
+      reason: error.reason,
+      metadata: error.metadata,
+    });
+    
+    // Provide user-friendly error messages
+    if (error.statusCode === 401) {
+      throw new Error('Payment gateway authentication failed. Please contact support.');
+    } else if (error.statusCode === 400) {
+      throw new Error(error.description || 'Invalid payment request. Please check the amount and try again.');
+    } else {
+      throw new Error('Failed to create payment order. Please try again or contact support if the issue persists.');
+    }
   }
 };
 

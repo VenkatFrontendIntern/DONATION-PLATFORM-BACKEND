@@ -31,6 +31,34 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
 
     const { campaignId, amount, isAnonymous, donorName, donorEmail, donorPhone, donorPan } = req.body;
 
+    // Validate required fields
+    if (!campaignId) {
+      sendError(res, 'Campaign ID is required', 400);
+      return;
+    }
+
+    if (!amount || amount <= 0) {
+      sendError(res, 'Valid donation amount is required', 400);
+      return;
+    }
+
+    if (!donorName || donorName.trim() === '') {
+      sendError(res, 'Donor name is required', 400);
+      return;
+    }
+
+    if (!donorEmail || donorEmail.trim() === '') {
+      sendError(res, 'Donor email is required', 400);
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(donorEmail)) {
+      sendError(res, 'Please provide a valid email address', 400);
+      return;
+    }
+
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
       sendError(res, 'Campaign not found', 404);
@@ -39,6 +67,8 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
 
     const order = await createRazorpayOrder(amount);
 
+    // Create donation without razorpayPaymentId - it will be undefined (not null)
+    // This prevents sparse index issues with null values
     const donation = await Donation.create({
       campaignId,
       donorId: isAnonymous ? null : req.user._id,
@@ -47,10 +77,11 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
       paymentMethod: 'razorpay',
       razorpayOrderId: order.id,
       status: 'pending',
-      donorName,
-      donorEmail,
-      donorPhone,
-      donorPan,
+      donorName: donorName.trim(),
+      donorEmail: donorEmail.trim().toLowerCase(),
+      donorPhone: donorPhone?.trim() || undefined,
+      donorPan: donorPan?.trim().toUpperCase() || undefined,
+      // Explicitly omit razorpayPaymentId so it's undefined, not null
     });
 
     sendSuccess(
@@ -62,7 +93,21 @@ export const createOrder = async (req: Request<{}, {}, CreateOrderBody>, res: Re
       'Order created successfully'
     );
   } catch (error: any) {
-    logger.error('Create order error:', error);
+    logger.error('Create order error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      body: req.body,
+    });
+    
+    // Handle duplicate key error for razorpayPaymentId (null values)
+    if (error.code === 11000 && error.keyPattern?.razorpayPaymentId) {
+      logger.error('Duplicate razorpayPaymentId error - likely sparse index issue with null values');
+      logger.error('Please run the database migration script to fix the index');
+      sendError(res, 'Database configuration issue detected. Please contact support or try again in a moment.', 500);
+      return;
+    }
+    
     sendError(res, undefined, 500, error);
   }
 };
@@ -148,6 +193,27 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
       return;
     }
 
+    // Check if this payment ID already exists in another donation
+    const existingPaymentDonation = await Donation.findOne({ 
+      razorpayPaymentId,
+      _id: { $ne: donationId } 
+    });
+    
+    if (existingPaymentDonation) {
+      if (existingPaymentDonation.status === 'success') {
+        if (session) {
+          await session.abortTransaction();
+          await session.endSession();
+        }
+        logger.warn(`Payment ID ${razorpayPaymentId} already used by donation ${existingPaymentDonation._id}`);
+        sendError(res, 'This payment has already been processed for another donation', 400);
+        return;
+      } else {
+        // Payment ID exists in a failed/pending donation, allow reusing it
+        logger.info(`Payment ID ${razorpayPaymentId} found in ${existingPaymentDonation.status} donation, proceeding with verification`);
+      }
+    }
+
     const verificationResult = await verifyAndProcessPayment(
       existingDonation,
       razorpayOrderId,
@@ -194,6 +260,19 @@ export const verifyPayment = async (req: Request<{}, {}, VerifyPaymentBody>, res
     }
     
     logger.error('Verify payment error:', error);
+    
+    // Handle duplicate payment ID errors specifically
+    if (error.code === 11000 && error.keyPattern?.razorpayPaymentId) {
+      logger.warn(`Duplicate payment ID error: ${error.message}`);
+      sendError(res, 'This payment has already been processed. If you closed the payment dialog, please try making a new donation.', 400);
+      return;
+    }
+    
+    // Handle custom duplicate payment ID errors from processSuccessfulPayment
+    if (error.message?.includes('already been used') || error.message?.includes('already been verified')) {
+      sendError(res, error.message || 'This payment has already been processed. Please try making a new donation if needed.', 400);
+      return;
+    }
     
     const isNetworkError = 
       error.code === 'ECONNRESET' ||
