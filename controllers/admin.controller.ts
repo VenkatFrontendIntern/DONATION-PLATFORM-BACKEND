@@ -135,6 +135,81 @@ export const getStats = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+/**
+ * Get donation trends for the last 6 months
+ */
+export const getDonationTrends = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const now = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(now.getMonth() - 6);
+    sixMonthsAgo.setDate(1); // Start of the month
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    // Generate array of last 6 months
+    const months: Array<{ year: number; month: number; label: string }> = [];
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      date.setDate(1);
+      date.setHours(0, 0, 0, 0);
+      
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      months.push({
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        label: monthNames[date.getMonth()],
+      });
+    }
+
+    // Get donation data grouped by month
+    const donationTrends = await Donation.aggregate([
+      {
+        $match: {
+          status: 'success',
+          createdAt: { $gte: sixMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+          },
+          totalAmount: { $sum: '$amount' },
+          donationCount: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    // Map the aggregated data to months array
+    const trendsData = months.map((monthInfo) => {
+      const trend = donationTrends.find(
+        (t) => t._id.year === monthInfo.year && t._id.month === monthInfo.month + 1 // MongoDB month is 1-indexed
+      );
+      return {
+        month: monthInfo.label,
+        amount: trend?.totalAmount || 0,
+        donations: trend?.donationCount || 0,
+      };
+    });
+
+    sendSuccess(
+      res,
+      {
+        trends: trendsData,
+      },
+      'Donation trends retrieved successfully'
+    );
+  } catch (error: any) {
+    logger.error('Get donation trends error:', error);
+    sendError(res, 'Server error', 500, error);
+  }
+};
+
 export const getAllUsers = async (req: Request, res: Response): Promise<void> => {
   try {
     const { page = 1, limit = 10, search } = req.query;
