@@ -202,24 +202,41 @@ if (process.env.VERCEL !== '1') {
   });
 
   // Graceful shutdown handlers
-  const gracefulShutdown = (signal: string) => {
+  const gracefulShutdown = async (signal: string) => {
     logger.info(`${signal} received. Starting graceful shutdown...`);
     
-    server.close(() => {
-      logger.info('HTTP server closed');
-      
-      // Close database connection
-      mongoose.connection.close(false, () => {
-        logger.info('Database connection closed');
-        process.exit(0);
+    // Set a timeout to force exit if shutdown takes too long
+    const forceExitTimeout = setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+    
+    try {
+      // Close HTTP server
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) {
+            reject(err);
+          } else {
+            logger.info('HTTP server closed');
+            resolve();
+          }
+        });
       });
       
-      // Force close after 10 seconds
-      setTimeout(() => {
-        logger.error('Forced shutdown after timeout');
-        process.exit(1);
-      }, 10000);
-    });
+      // Close database connection (Mongoose 8+ returns Promise, no callback)
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.connection.close(false);
+        logger.info('Database connection closed');
+      }
+      
+      clearTimeout(forceExitTimeout);
+      process.exit(0);
+    } catch (error: any) {
+      logger.error('Error during graceful shutdown:', error);
+      clearTimeout(forceExitTimeout);
+      process.exit(1);
+    }
   };
 
   // Handle different termination signals
