@@ -23,12 +23,22 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const token = authHeader?.split(' ')[1];
 
     if (!token) {
-      res.status(401).json({ message: 'Authentication required' });
+      if (res.headersSent) return;
+      res.status(401).json({ 
+        status: 'error',
+        message: 'Authentication required',
+        code: 'AUTH_REQUIRED'
+      });
       return;
     }
 
     if (!config.jwtSecret) {
-      res.status(500).json({ message: 'JWT secret not configured' });
+      logger.error('JWT secret not configured');
+      if (res.headersSent) return;
+      res.status(500).json({ 
+        status: 'error',
+        message: 'Server configuration error' 
+      });
       return;
     }
 
@@ -36,15 +46,26 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const user = await User.findById(decoded.id).select('-password');
 
     if (!user) {
-      res.status(401).json({ message: 'User not found' });
+      if (res.headersSent) return;
+      res.status(401).json({ 
+        status: 'error',
+        message: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
       return;
     }
 
     req.user = user;
     next();
   } catch (error: any) {
+    // Don't send response if headers already sent
+    if (res.headersSent) {
+      return next(error);
+    }
+    
     logger.warn(`Authentication failed: ${error.message || 'Invalid or expired token'} for route ${req.path}`);
     res.status(401).json({ 
+      status: 'error',
       message: 'Invalid or expired token',
       code: 'INVALID_TOKEN'
     });

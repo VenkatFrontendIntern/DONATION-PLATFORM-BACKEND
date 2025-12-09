@@ -8,6 +8,7 @@ let cachedConnection: typeof mongoose | null = null;
 
 export const connectDB = async (): Promise<void> => {
   try {
+    // If already connected, return early
     if (cachedConnection && mongoose.connection.readyState === 1) {
       return;
     }
@@ -18,21 +19,53 @@ export const connectDB = async (): Promise<void> => {
       throw new Error('MONGODB_URI is not defined');
     }
 
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.connection.close();
+    // Close existing connection if in transitional state
+    if (mongoose.connection.readyState !== 0 && mongoose.connection.readyState !== 1) {
+      try {
+        await mongoose.connection.close();
+      } catch (closeError) {
+        // Ignore close errors
+      }
     }
 
+    // Connect with proper timeout and retry settings
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000, // Increased to 10 seconds
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 10, // Maximum number of connections in the pool
+      minPoolSize: 2, // Minimum number of connections in the pool
+      retryWrites: true,
+      w: 'majority',
     });
     
     cachedConnection = conn;
+    
+    // Handle connection events
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB connection error:', err);
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.warn('MongoDB disconnected');
+    });
+    
+    mongoose.connection.on('reconnected', () => {
+      console.info('MongoDB reconnected');
+    });
   } catch (error) {
-    if (process.env.VERCEL !== '1') {
+    console.error('Database connection error:', error);
+    // Don't exit in serverless environments
+    if (process.env.VERCEL !== '1' && process.env.NODE_ENV === 'production') {
+      // In production, log but don't exit immediately - let the app retry
+      throw error;
+    } else if (process.env.VERCEL !== '1') {
+      // In development, exit on error
       process.exit(1);
+    } else {
+      // In serverless, throw to be handled by the caller
+      throw error;
     }
-    throw error;
   }
 };
 

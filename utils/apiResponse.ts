@@ -12,6 +12,11 @@ export const sendSuccess = <T>(
   message: string = 'Operation successful',
   statusCode: number = 200
 ): void => {
+  // Prevent sending response if headers already sent
+  if (res.headersSent) {
+    return;
+  }
+  
   res.status(statusCode).json({
     status: 'success',
     message,
@@ -61,6 +66,11 @@ export const sendError = (
   statusCode: number = 400,
   error?: any
 ): void => {
+  // Prevent sending response if headers already sent
+  if (res.headersSent) {
+    return;
+  }
+  
   const errorMessage = message || (error ? extractErrorMessage(error) : 'An error occurred');
 
   const response: ApiResponse = {
@@ -91,6 +101,11 @@ export const sendPaginated = <T>(
   },
   message: string = 'Data retrieved successfully'
 ): void => {
+  // Prevent sending response if headers already sent
+  if (res.headersSent) {
+    return;
+  }
+  
   res.json({
     status: 'success',
     message,
