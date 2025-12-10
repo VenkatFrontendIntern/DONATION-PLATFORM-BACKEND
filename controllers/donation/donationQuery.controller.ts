@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Donation } from '../../models/Donation.model.js';
 import { generateCertificate } from '../../services/pdf.service.js';
 import { logger } from '../../utils/logger.js';
-import { sendSuccess, sendError } from '../../utils/apiResponse.js';
+import { sendSuccess, sendError, sendPaginated } from '../../utils/apiResponse.js';
 
 export const getCertificate = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -46,11 +46,28 @@ export const getMyDonations = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const { page = 1, limit = 10 } = req.query;
+
     const donations = await Donation.find({ donorId: req.user._id })
       .populate('campaignId', 'title coverImage')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit));
 
-    sendSuccess(res, { donations }, 'Donations retrieved successfully');
+    const total = await Donation.countDocuments({ donorId: req.user._id });
+    const pages = Math.ceil(total / Number(limit));
+
+    sendPaginated(
+      res,
+      donations,
+      {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages,
+      },
+      'Donations retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get my donations error:', error);
     sendError(res, undefined, 500, error);
