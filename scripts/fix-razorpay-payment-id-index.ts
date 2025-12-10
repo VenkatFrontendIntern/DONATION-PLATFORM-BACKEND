@@ -40,7 +40,8 @@ async function fixIndex() {
       } catch (dropError: any) {
         // Try dropping by key if name doesn't work
         try {
-          await collection.dropIndex({ razorpayPaymentId: 1 });
+          // Use type assertion to handle MongoDB's flexible dropIndex signature
+          await collection.dropIndex({ razorpayPaymentId: 1 } as any);
           console.log('Dropped existing index by key');
         } catch (dropError2: any) {
           console.log('Could not drop index (might not exist or different name):', dropError2.message);

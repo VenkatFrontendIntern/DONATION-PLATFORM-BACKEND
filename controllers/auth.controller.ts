@@ -188,6 +188,18 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     );
   } catch (error: any) {
     logger.error('Get me error:', error);
+    
+    // If it's a database connection error, return 503 instead of 500
+    // This helps the frontend distinguish between temporary DB issues and other server errors
+    if (error.name === 'MongoServerError' || 
+        error.message?.includes('connection') || 
+        error.message?.includes('timeout') ||
+        error.message?.includes('Database connection')) {
+      logger.warn('Database connection error for getMe, returning 503');
+      sendError(res, 'Service temporarily unavailable. Please try again in a moment.', 503, error);
+      return;
+    }
+    
     sendError(res, undefined, 500, error);
   }
 };

@@ -272,13 +272,30 @@ export const getMyCampaigns = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const { page = 1, limit = 10 } = req.query;
+
     const campaigns = await Campaign.find({ organizerId: req.user._id })
       .select('title description organizer goalAmount raisedAmount category coverImage status endDate donorCount createdAt')
       .populate('category', 'name slug')
       .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
       .lean();
 
-    sendSuccess(res, { campaigns }, 'Campaigns retrieved successfully');
+    const total = await Campaign.countDocuments({ organizerId: req.user._id });
+    const pages = Math.ceil(total / Number(limit));
+
+    sendPaginated(
+      res,
+      campaigns,
+      {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages,
+      },
+      'Campaigns retrieved successfully'
+    );
   } catch (error: any) {
     logger.error('Get my campaigns error:', error);
     sendError(res, undefined, 500, error);
